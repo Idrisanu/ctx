@@ -27,6 +27,22 @@ fn run_git(root: &Path, args: &[&str]) -> Result<String> {
     Ok(String::from_utf8_lossy(&out.stdout).trim().to_string())
 }
 
+fn run_git_raw(root: &Path, args: &[&str]) -> Result<String> {
+    let out = Command::new("git")
+        .args(args)
+        .current_dir(root)
+        .output()
+        .context("failed to run git")?;
+    if !out.status.success() {
+        anyhow::bail!(
+            "git {:?} failed: {}",
+            args,
+            String::from_utf8_lossy(&out.stderr)
+        );
+    }
+    Ok(String::from_utf8_lossy(&out.stdout).to_string())
+}
+
 pub fn git_available() -> bool {
     Command::new("git")
         .arg("--version")
@@ -46,7 +62,8 @@ pub fn info(root: &Path) -> GitInfo {
     info.is_repo = true;
     info.branch = run_git(root, &["rev-parse", "--abbrev-ref", "HEAD"]).ok();
     info.last_commit = run_git(root, &["rev-parse", "--short", "HEAD"]).ok();
-    if let Ok(porcelain) = run_git(root, &["status", "--porcelain"]) {
+    let raw_porcelain = run_git_raw(root, &["status", "--porcelain"]);
+    if let Ok(porcelain) = raw_porcelain {
         let files: Vec<String> = porcelain
             .lines()
             .filter(|l| !l.trim().is_empty())
