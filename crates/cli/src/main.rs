@@ -13,7 +13,10 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Commands {
-    Init,
+    Init {
+        #[arg(long)]
+        yes: bool,
+    },
     Status,
     Doctor,
     History,
@@ -57,6 +60,16 @@ enum Commands {
     Agents,
     #[command(name = "checkpoint-auto")]
     CheckpointAuto,
+    Hooks {
+        #[command(subcommand)]
+        action: HooksAction,
+    },
+}
+
+#[derive(Subcommand)]
+enum HooksAction {
+    Install,
+    Status,
 }
 
 fn project_root() -> PathBuf {
@@ -77,7 +90,7 @@ fn open_ctx() -> Result<(CtxDir, PathBuf)> {
 fn main() -> Result<()> {
     let cli = Cli::parse();
     match cli.command {
-        Commands::Init => cmd_init(),
+        Commands::Init { yes } => cmd_init(yes),
         Commands::Status => cmd_status(),
         Commands::Doctor => cmd_doctor(),
         Commands::History => cmd_history(),
@@ -97,6 +110,23 @@ fn main() -> Result<()> {
         Commands::Ingest { from } => cmd_ingest(from),
         Commands::Agents => cmd_agents(),
         Commands::CheckpointAuto => cmd_checkpoint_auto(),
+        Commands::Hooks { action } => match action {
+            HooksAction::Install => {
+                let root = project_root();
+                install_git_hook(&root);
+                Ok(())
+            }
+            HooksAction::Status => {
+                let root = project_root();
+                let p = root.join(".git/hooks/post-commit");
+                if p.exists() {
+                    println!("post-commit hook: installed");
+                } else {
+                    println!("post-commit hook: not installed (run `ctx hooks install`)");
+                }
+                Ok(())
+            }
+        },
     }
 }
 
@@ -106,20 +136,49 @@ fn detect_project_name(root: &std::path::Path) -> String {
         .unwrap_or_else(|| "project".into())
 }
 
-fn cmd_init() -> Result<()> {
+fn cmd_init(yes: bool) -> Result<()> {
     let root = project_root();
     let ctx = CtxDir::at(&root);
+    let already = ctx.exists();
     ctx.init()?;
 
-    let git = ctx_git::info(&root);
+    // --- git setup before we probe state ---
+    let git_installed = ctx_git::git_available();
+    let mut git = ctx_git::info(&root);
+    if !git.is_repo
+        && git_installed
+        && !already
+        && (yes
+            || prompt_yes(
+                "Git is installed but this folder is not a repository. Run `git init` now? [y/N] ",
+            ))
+    {
+        let status = std::process::Command::new("git")
+            .arg("init")
+            .current_dir(&root)
+            .status();
+        if status.map(|s| s.success()).unwrap_or(false) {
+            println!("Initialized empty git repository.");
+            git = ctx_git::info(&root);
+        } else {
+            eprintln!("⚠ git init failed — continuing without git.");
+        }
+    }
+
     let docs = ctx_context::discover(&root);
     let env = ctx_env::detect(&root);
 
-    let mut state = ProjectContext {
-        project: detect_project_name(&root),
-        status: "initialized".into(),
-        ..Default::default()
+    // On re-init, preserve existing state + config; otherwise create fresh.
+    let mut state = if already && ctx.state_path().exists() {
+        ctx.load_state().unwrap_or_default()
+    } else {
+        ProjectContext {
+            project: detect_project_name(&root),
+            status: "initialized".into(),
+            ..Default::default()
+        }
     };
+
     state.environment = EnvironmentState {
         runtimes: vec![],
         package_managers: vec![],
@@ -147,31 +206,61 @@ fn cmd_init() -> Result<()> {
     }
     state.files_changed = git.dirty_files.clone();
 
-    let config = Config {
-        project_name: state.project.clone(),
-        checkpoint_counter: 0,
-        created_at: Some(chrono_now()),
+    let config = if already && ctx.config_path().exists() {
+        ctx.load_config().unwrap_or(Config {
+            project_name: state.project.clone(),
+            checkpoint_counter: 0,
+            created_at: Some(chrono_now()),
+        })
+    } else {
+        Config {
+            project_name: state.project.clone(),
+            checkpoint_counter: 0,
+            created_at: Some(chrono_now()),
+        }
     };
     ctx.save_config(&config)?;
     ctx.save_state(&state)?;
-    ctx.save_checkpoints(&[])?;
+    if !ctx.checkpoints_path().exists() {
+        ctx.save_checkpoints(&[])?;
+    }
 
-    println!("Initialized CTX in {}", ctx.root.display());
-    println!("Project: {}", state.project);
     println!(
-        "Git: {}",
-        if git.is_repo {
-            "detected"
-        } else {
-            "not detected"
-        }
+        "{} CTX in {}",
+        if already { "Refreshed" } else { "Initialized" },
+        ctx.root.display()
     );
+    println!("Project: {}", state.project);
+    if git.is_repo {
+        println!(
+            "Git: detected ({})",
+            git.branch.as_deref().unwrap_or("detached")
+        );
+    } else if git_installed {
+        println!("Git: installed, but this folder is not a repository.");
+        println!("      Run `git init` then `ctx init` to enable auto-checkpoints.");
+    } else {
+        println!("Git: not installed. CTX works without it, but checkpoints and");
+        println!("      change tracking are limited. Install with:");
+        println!("        sudo apt install git   # Debian/Ubuntu");
+        println!("        brew install git       # macOS");
+        println!("        winget install Git.Git # Windows");
+    }
     println!("Instruction files found: {}", docs.instructions.len());
     println!("Runtimes: {:?}", state.environment.runtimes);
 
     inject_cooperative_note(&root);
     install_git_hook(&root);
     Ok(())
+}
+
+fn prompt_yes(question: &str) -> bool {
+    use std::io::Write;
+    print!("{}", question);
+    let _ = std::io::stdout().flush();
+    let mut line = String::new();
+    std::io::stdin().read_line(&mut line).ok();
+    matches!(line.trim().to_lowercase().as_str(), "y" | "yes")
 }
 
 const NOTE_BLOCK_START: &str = "<!-- CTX:START -->";

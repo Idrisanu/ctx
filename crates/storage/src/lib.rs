@@ -1,4 +1,4 @@
-use anyhow::{bail, Context, Result};
+use anyhow::{Context, Result};
 use ctx_core::{Checkpoint, Config, ProjectContext};
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -34,7 +34,18 @@ impl CtxDir {
 
     pub fn init(&self) -> Result<()> {
         if self.exists() {
-            bail!(".ctx already initialized at {}", self.root.display());
+            // idempotent: refresh scaffolding, don't fail
+            for sub in [
+                "context",
+                "sessions",
+                "snapshots",
+                "decisions",
+                "handoffs",
+                "index",
+            ] {
+                fs::create_dir_all(self.root.join(sub))?;
+            }
+            return Ok(());
         }
         for sub in [
             "context",
