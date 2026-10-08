@@ -9,12 +9,48 @@ pub trait Adapter {
 pub struct GenericAdapter;
 pub struct OpenCodeAdapter;
 
+/// Same canonical content, formatted for the tool about to read it.
+/// The adapter only changes how ctx talks — it never renames or moves
+/// project files (AGENTS.md / CLAUDE.md / GEMINI.md stay as they are).
+pub struct FlavoredAdapter {
+    id: &'static str,
+    label: &'static str,
+    doc_pointer: &'static str,
+}
+
 pub fn get(name: &str) -> Option<Box<dyn Adapter>> {
     match name {
         "generic" | "markdown" => Some(Box::new(GenericAdapter)),
         "opencode" => Some(Box::new(OpenCodeAdapter)),
+        "claude" | "claude-code" => Some(Box::new(FlavoredAdapter {
+            id: "claude",
+            label: "Claude Code",
+            doc_pointer: "CLAUDE.md (or AGENTS.md) in the repo root",
+        })),
+        "gemini" | "gemini-cli" => Some(Box::new(FlavoredAdapter {
+            id: "gemini",
+            label: "Gemini CLI",
+            doc_pointer: "GEMINI.md (or AGENTS.md) in the repo root",
+        })),
+        "codex" => Some(Box::new(FlavoredAdapter {
+            id: "codex",
+            label: "Codex",
+            doc_pointer: "AGENTS.md in the repo root",
+        })),
+        "copilot" | "vscode" => Some(Box::new(FlavoredAdapter {
+            id: "copilot",
+            label: "VS Code / Copilot",
+            doc_pointer: "AGENTS.md in the repo root",
+        })),
         _ => None,
     }
+}
+
+/// All adapter names `ctx resume` / `ctx handoff` accept.
+pub fn names() -> Vec<&'static str> {
+    vec![
+        "generic", "opencode", "claude", "gemini", "codex", "copilot",
+    ]
 }
 
 impl Adapter for GenericAdapter {
@@ -90,6 +126,82 @@ impl Adapter for OpenCodeAdapter {
     }
 }
 
+impl Adapter for FlavoredAdapter {
+    fn name(&self) -> &'static str {
+        self.id
+    }
+    fn render(&self, state: &ProjectContext, git: &GitInfo) -> String {
+        let mut out = String::new();
+        out.push_str(&format!(
+            "<!-- CTX: project context for {} — also read {} for project rules -->\n\n",
+            self.label, self.doc_pointer
+        ));
+        out.push_str("# Project Context (from CTX)\n\n");
+        out.push_str(&format!("**Project:** {}\n\n", state.project));
+        if let Some(o) = &state.objective {
+            out.push_str(&format!("**Objective:** {}\n\n", o));
+        }
+        out.push_str(&format!("**Status:** {}\n\n", state.status));
+        if !state.completed.is_empty() {
+            out.push_str("## Completed\n");
+            for c in &state.completed {
+                out.push_str(&format!("- {}\n", c));
+            }
+            out.push('\n');
+        }
+        if !state.current_work.is_empty() {
+            out.push_str("## Current work\n");
+            for c in &state.current_work {
+                out.push_str(&format!("- {}\n", c));
+            }
+            out.push('\n');
+        }
+        if !state.constraints.is_empty() {
+            out.push_str("## Constraints\n");
+            for c in &state.constraints {
+                out.push_str(&format!("- {}\n", c));
+            }
+            out.push('\n');
+        }
+        if !state.decisions.is_empty() {
+            out.push_str("## Decisions (do not contradict without asking)\n");
+            for d in &state.decisions {
+                out.push_str(&format!("- **{}**", d.decision));
+                if let Some(r) = &d.reason {
+                    out.push_str(&format!(" — {}", r));
+                }
+                out.push('\n');
+            }
+            out.push('\n');
+        }
+        let files = if git.dirty_files.is_empty() {
+            &state.files_changed
+        } else {
+            &git.dirty_files
+        };
+        if !files.is_empty() {
+            out.push_str("## Recently changed files\n");
+            for f in files {
+                out.push_str(&format!("- {}\n", f));
+            }
+            out.push('\n');
+        }
+        if !state.errors.is_empty() {
+            out.push_str("## Known errors / blockers\n");
+            for e in &state.errors {
+                out.push_str(&format!("- {}\n", e));
+            }
+            out.push('\n');
+        }
+        if let Some(next) = &state.next_action {
+            out.push_str(&format!("## Next action\n{}\n", next));
+        } else {
+            out.push_str("## Next action\n(continue from Current work above)\n");
+        }
+        out
+    }
+}
+
 pub fn render_handoff(state: &ProjectContext, git: &GitInfo) -> String {
     let mut out = String::new();
     out.push_str("CTX HANDOFF\n\n");
@@ -152,5 +264,25 @@ mod tests {
         let g = GitInfo::default();
         let out = OpenCodeAdapter.render(&s, &g);
         assert!(out.contains("demo"));
+    }
+    #[test]
+    fn all_adapters_render() {
+        let mut s = ProjectContext::default();
+        s.project = "demo".into();
+        s.decisions.push(ctx_core::Decision {
+            id: "CTX-1".into(),
+            decision: "PostgreSQL".into(),
+            reason: None,
+            recorded_at: None,
+        });
+        let g = GitInfo::default();
+        for n in names() {
+            let a = get(n).unwrap();
+            let out = a.render(&s, &g);
+            assert!(out.contains("demo"), "adapter {}", n);
+            if n != "generic" && n != "opencode" {
+                assert!(out.contains("PostgreSQL"), "adapter {}", n);
+            }
+        }
     }
 }

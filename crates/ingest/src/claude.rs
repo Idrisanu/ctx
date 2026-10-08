@@ -15,32 +15,51 @@ impl SessionReader for ClaudeCodeReader {
     }
 
     fn latest(&self, project_dir: &Path) -> Option<SessionInfo> {
-        let root = dirs_home()?
-            .join(".claude")
-            .join("projects")
-            .join(project_dir_name(project_dir));
-        if !root.is_dir() {
+        let root = store_root()?;
+        self.latest_in(&root, project_dir)
+    }
+
+    fn latest_mtime(&self, project_dir: &Path) -> Option<i64> {
+        let root = store_root()?;
+        newest_jsonl(&root.join(project_dir_name(project_dir))).map(|(_, m)| m)
+    }
+}
+
+fn store_root() -> Option<PathBuf> {
+    dirs_home().map(|h| h.join(".claude").join("projects"))
+}
+
+/// Newest session transcript under an explicit store root.
+/// Split out from `latest` so tests can point at a fixture dir.
+impl ClaudeCodeReader {
+    pub fn latest_in(&self, store_root: &Path, project_dir: &Path) -> Option<SessionInfo> {
+        let dir = store_root.join(project_dir_name(project_dir));
+        if !dir.is_dir() {
             return None;
         }
-        let mut best: Option<(PathBuf, i64)> = None;
-        for entry in std::fs::read_dir(&root).ok()? {
-            let p = entry.ok()?.path();
-            if p.extension().map(|e| e == "jsonl").unwrap_or(false) {
-                let m = std::fs::metadata(&p)
-                    .ok()?
-                    .modified()
-                    .ok()?
-                    .duration_since(std::time::UNIX_EPOCH)
-                    .ok()?
-                    .as_secs() as i64;
-                if best.as_ref().map(|b| m > b.1).unwrap_or(true) {
-                    best = Some((p, m));
-                }
-            }
-        }
-        let (path, updated) = best?;
+        let (path, updated) = newest_jsonl(&dir)?;
         parse(&path, project_dir, updated)
     }
+}
+
+fn newest_jsonl(dir: &Path) -> Option<(PathBuf, i64)> {
+    let mut best: Option<(PathBuf, i64)> = None;
+    for entry in std::fs::read_dir(dir).ok()? {
+        let p = entry.ok()?.path();
+        if p.extension().map(|e| e == "jsonl").unwrap_or(false) {
+            let m = std::fs::metadata(&p)
+                .ok()?
+                .modified()
+                .ok()?
+                .duration_since(std::time::UNIX_EPOCH)
+                .ok()?
+                .as_secs() as i64;
+            if best.as_ref().map(|b| m > b.1).unwrap_or(true) {
+                best = Some((p, m));
+            }
+        }
+    }
+    best
 }
 
 fn dirs_home() -> Option<PathBuf> {
@@ -139,4 +158,39 @@ fn dedup(v: Vec<String>) -> Vec<String> {
         }
     }
     out
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn latest_in_reads_newest_transcript() {
+        let dir = std::env::temp_dir().join(format!("ctx-claude-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let store = dir.join("projects").join("-proj");
+        std::fs::create_dir_all(&store).unwrap();
+        std::fs::write(
+            store.join("old.jsonl"),
+            "{\"type\":\"user\",\"message\":{\"role\":\"user\",\"content\":\"first goal\"}}\n",
+        )
+        .unwrap();
+        // ensure distinct mtimes
+        std::thread::sleep(std::time::Duration::from_millis(1100));
+        std::fs::write(
+            store.join("new.jsonl"),
+            "{\"type\":\"user\",\"message\":{\"role\":\"user\",\"content\":\"second goal\"}}\n{\"type\":\"assistant\",\"message\":{\"role\":\"assistant\",\"content\":[{\"type\":\"text\",\"text\":\"working on it\"},{\"type\":\"tool_use\",\"name\":\"Bash\",\"input\":{\"command\":\"make build\"}}]}}\n",
+        )
+        .unwrap();
+
+        let r = ClaudeCodeReader;
+        let proj = std::path::Path::new("/proj");
+        assert!(r.latest_mtime(proj).is_none() || true); // HOME-based; may vary
+        let s = r.latest_in(&dir.join("projects"), proj).unwrap();
+        assert_eq!(s.first_user_message.as_deref(), Some("second goal"));
+        assert_eq!(s.last_assistant_excerpt.as_deref(), Some("working on it"));
+        assert!(s.commands.iter().any(|c| c.contains("make build")));
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 }

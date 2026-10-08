@@ -20,7 +20,10 @@ enum Commands {
     Status,
     Doctor,
     History,
-    Handoff,
+    Handoff {
+        #[arg(long)]
+        agent: Option<String>,
+    },
     Inspect {
         what: String,
     },
@@ -58,6 +61,12 @@ enum Commands {
         from: Option<String>,
     },
     Agents,
+    Monitor {
+        #[arg(long, default_value = "30")]
+        interval: u64,
+        #[arg(long)]
+        once: bool,
+    },
     #[command(name = "checkpoint-auto")]
     CheckpointAuto,
     Hooks {
@@ -94,7 +103,7 @@ fn main() -> Result<()> {
         Commands::Status => cmd_status(),
         Commands::Doctor => cmd_doctor(),
         Commands::History => cmd_history(),
-        Commands::Handoff => cmd_handoff(),
+        Commands::Handoff { agent } => cmd_handoff(agent),
         Commands::Inspect { what } => cmd_inspect(&what),
         Commands::Checkpoint { summary } => cmd_checkpoint(summary),
         Commands::Resume { agent } => cmd_resume(agent),
@@ -109,6 +118,7 @@ fn main() -> Result<()> {
         Commands::Instructions { path } => cmd_instructions(path),
         Commands::Ingest { from } => cmd_ingest(from),
         Commands::Agents => cmd_agents(),
+        Commands::Monitor { interval, once } => cmd_monitor(interval, once),
         Commands::CheckpointAuto => cmd_checkpoint_auto(),
         Commands::Hooks { action } => match action {
             HooksAction::Install => {
@@ -267,12 +277,26 @@ const NOTE_BLOCK_START: &str = "<!-- CTX:START -->";
 const NOTE_BLOCK_END: &str = "<!-- CTX:END -->";
 
 fn inject_cooperative_note(root: &std::path::Path) {
-    let path = root.join("AGENTS.md");
+    // Always write AGENTS.md (canonical default); also honor the agent's
+    // own file when the project already uses it. Never rename files.
+    let mut targets = vec![root.join("AGENTS.md")];
+    for name in ["CLAUDE.md", "GEMINI.md"] {
+        let p = root.join(name);
+        if p.exists() {
+            targets.push(p);
+        }
+    }
+    for path in targets {
+        inject_note_file(&path);
+    }
+}
+
+fn inject_note_file(path: &std::path::Path) {
     let block = format!(
-        "{}\n## For AI coding agents (managed by CTX)\n\nMaintain `.ctx/handoffs/current.md` while working. Before ending a turn or when you are about to stop, update it with:\n\n- Goal\n- Completed\n- Current work\n- Next action\n- Blockers\n\nCTX reads this file to build the handoff for the next agent. Keep it short and factual.\n{}\n",
+        "{}\n## For AI coding agents (managed by CTX)\n\nMaintain `.ctx/handoffs/current.md` while working. Update it after every milestone, every batch of tool calls, and before ending a turn — not only at the end. Include:\n\n- Goal\n- Completed\n- Current work\n- Last command run (and its result)\n- Last error, if any\n- Next action\n- Blockers\n\nCTX reads this file to build the handoff when the session ends (token limit, crash, or tool switch). Keep it short and factual.\n{}\n",
         NOTE_BLOCK_START, NOTE_BLOCK_END
     );
-    let existing = std::fs::read_to_string(&path).unwrap_or_default();
+    let existing = std::fs::read_to_string(path).unwrap_or_default();
     let updated = if let (Some(s), Some(e)) = (
         existing.find(NOTE_BLOCK_START),
         existing.find(NOTE_BLOCK_END),
@@ -284,10 +308,13 @@ fn inject_cooperative_note(root: &std::path::Path) {
     } else {
         format!("{}\n\n{}", existing.trim_end(), block)
     };
-    if let Err(e) = std::fs::write(&path, updated) {
-        eprintln!("warning: could not update AGENTS.md: {}", e);
+    if let Err(e) = std::fs::write(path, updated) {
+        eprintln!("warning: could not update {}: {}", path.display(), e);
     } else {
-        println!("AGENTS.md updated with CTX note instructions.");
+        println!(
+            "{} updated with CTX note instructions.",
+            path.file_name().unwrap_or_default().to_string_lossy()
+        );
     }
 }
 
@@ -450,10 +477,25 @@ fn cmd_history() -> Result<()> {
     Ok(())
 }
 
-fn cmd_handoff() -> Result<()> {
+fn cmd_handoff(agent: Option<String>) -> Result<()> {
     let (ctx, root) = open_ctx()?;
-    let state = ctx.load_state()?;
+    let mut state = ctx.load_state()?;
+    apply_note(&mut state, &root);
     let git = ctx_git::info(&root);
+
+    // Optional per-agent rendering. This only changes how ctx talks —
+    // it never renames project files or agent folders.
+    if let Some(name) = agent.as_deref() {
+        let adapter = ctx_adapters::get(name).ok_or_else(|| {
+            anyhow::anyhow!(
+                "unknown agent '{}' (available: {})",
+                name,
+                ctx_adapters::names().join(", ")
+            )
+        })?;
+        println!("{}", adapter.render(&state, &git));
+        return Ok(());
+    }
 
     println!("CTX HANDOFF");
     println!();
@@ -595,8 +637,9 @@ fn cmd_resume(agent: Option<String>) -> Result<()> {
     let agent_name = agent.as_deref().unwrap_or("generic");
     let adapter = ctx_adapters::get(agent_name).ok_or_else(|| {
         anyhow::anyhow!(
-            "unknown agent '{}' (available: generic, opencode)",
-            agent_name
+            "unknown agent '{}' (available: {})",
+            agent_name,
+            ctx_adapters::names().join(", ")
         )
     })?;
     let mut rendered = adapter.render(&state, &git);
@@ -849,6 +892,7 @@ fn cmd_ingest(from: Option<String>) -> Result<()> {
         files_touched: compressed.files_touched.clone(),
         commands: compressed.commands.clone(),
         source: compressed.source.clone(),
+        updated_unix: session.updated_unix,
     });
     ctx.save_state(&state)?;
 
@@ -926,6 +970,12 @@ fn cmd_agents() -> Result<()> {
     }
     println!();
     println!("Generic fallback: ctx ingest --from <transcript.jsonl>");
+    println!();
+    println!("Note: VS Code / Copilot keeps no readable session transcript on");
+    println!("disk, so there is no automatic reader for it. For Copilot the");
+    println!("cooperative note (.ctx/handoffs/current.md, via AGENTS.md) plus");
+    println!("git state is the designed channel — keep the note current and");
+    println!("`ctx resume` will carry it to the next agent.");
     Ok(())
 }
 
@@ -1059,4 +1109,87 @@ fn clean_note_value(s: &str) -> Option<String> {
     } else {
         Some(t.to_string())
     }
+}
+
+/// Merge one parsed session into state. Shared by `ctx ingest` and `ctx monitor`.
+/// Returns true when state changed.
+fn merge_session(
+    ctx: &CtxDir,
+    state: &mut ProjectContext,
+    session: &ctx_ingest::SessionInfo,
+) -> Result<bool> {
+    // skip when we already have this exact session version
+    if let Some(ing) = &state.ingested {
+        if ing.source == ctx_ingest::compress(session).source
+            && ing.updated_unix >= session.updated_unix
+        {
+            return Ok(false);
+        }
+    }
+    let compressed = ctx_ingest::compress(session);
+    if state.objective.is_none() {
+        state.objective = compressed.goal.clone();
+    }
+    for e in &compressed.errors {
+        if !state.errors.contains(e) {
+            state.errors.push(e.clone());
+        }
+    }
+    for f in &compressed.files_touched {
+        if !state.files_changed.contains(f) {
+            state.files_changed.push(f.clone());
+        }
+    }
+    state.ingested = Some(ctx_core::Ingested {
+        agent: compressed.agent.clone(),
+        goal: compressed.goal.clone(),
+        last_user_message: compressed.last_user_message.clone(),
+        last_assistant_excerpt: compressed.last_assistant_excerpt.clone(),
+        errors: compressed.errors.clone(),
+        files_touched: compressed.files_touched.clone(),
+        commands: compressed.commands.clone(),
+        source: compressed.source.clone(),
+        updated_unix: session.updated_unix,
+    });
+    ctx.save_state(state)?;
+    Ok(true)
+}
+
+fn cmd_monitor(interval: u64, once: bool) -> Result<()> {
+    let (ctx, root) = open_ctx()?;
+    println!(
+        "Monitoring AI sessions for {} (every {}s — Ctrl-C to stop)",
+        root.display(),
+        interval
+    );
+    loop {
+        let mut state = ctx.load_state()?;
+        for reader in ctx_ingest::registry() {
+            // cheap mtime probe first; skip full parse when nothing changed
+            let mtime = match reader.latest_mtime(&root) {
+                Some(m) => m,
+                None => continue,
+            };
+            let fresh = match &state.ingested {
+                Some(ing) => ing.updated_unix < mtime,
+                None => true,
+            };
+            if !fresh {
+                continue;
+            }
+            if let Some(session) = reader.latest(&root) {
+                if merge_session(&ctx, &mut state, &session)? {
+                    println!(
+                        "ctx: updated from {} session {}",
+                        session.agent, session.session_id
+                    );
+                }
+            }
+        }
+        if once {
+            break;
+        }
+        std::thread::sleep(std::time::Duration::from_secs(interval.max(5)));
+    }
+    Ok(())
 }

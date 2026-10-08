@@ -106,6 +106,8 @@ pub mod model {
             pub files_touched: Vec<String>,
             pub commands: Vec<String>,
             pub source: String,
+            #[serde(default)]
+            pub updated_unix: i64,
         }
     }
     pub use ctx_ingest_summary::Ingested;
