@@ -48,6 +48,9 @@ enum Commands {
     Objective {
         text: String,
     },
+    Instructions {
+        path: Option<String>,
+    },
 }
 
 fn project_root() -> PathBuf {
@@ -84,6 +87,7 @@ fn main() -> Result<()> {
         Commands::Complete { item } => cmd_complete(item),
         Commands::Next { action } => cmd_next(action),
         Commands::Objective { text } => cmd_objective(text),
+        Commands::Instructions { path } => cmd_instructions(path),
     }
 }
 
@@ -329,6 +333,17 @@ fn cmd_handoff() -> Result<()> {
         "Next action:\n{}",
         state.next_action.as_deref().unwrap_or("(unset)")
     );
+    println!();
+    println!("Instructions:");
+    let cwd = project_root();
+    let inst = ctx_context::instructions_for(&root, &cwd);
+    if inst.is_empty() {
+        println!("(none)");
+    } else {
+        for p in &inst {
+            println!("{}", p.strip_prefix(&root).unwrap_or(p).display());
+        }
+    }
     Ok(())
 }
 
@@ -413,7 +428,13 @@ fn cmd_resume(agent: Option<String>) -> Result<()> {
             agent_name
         )
     })?;
-    let rendered = adapter.render(&state, &git);
+    let mut rendered = adapter.render(&state, &git);
+    let cwd = project_root();
+    let merged = ctx_context::merged_instructions(&root, &cwd);
+    if !merged.is_empty() {
+        rendered.push_str("\n## Project instructions\n\n");
+        rendered.push_str(&merged);
+    }
     let dir = ctx.root.join("handoffs");
     std::fs::create_dir_all(&dir)?;
     let path = dir.join(format!("{}.md", adapter.name()));
@@ -568,5 +589,25 @@ fn cmd_objective(text: String) -> Result<()> {
     state.status = "in_progress".into();
     ctx.save_state(&state)?;
     println!("Objective set: {}", text);
+    Ok(())
+}
+
+fn cmd_instructions(path: Option<String>) -> Result<()> {
+    let (_, root) = open_ctx()?;
+    let cwd = match path {
+        Some(p) => std::path::Path::new(&p)
+            .canonicalize()
+            .unwrap_or_else(|_| PathBuf::from(&p)),
+        None => project_root(),
+    };
+    let list = ctx_context::instructions_for(&root, &cwd);
+    if list.is_empty() {
+        println!("No instruction files found for {}", cwd.display());
+        return Ok(());
+    }
+    println!("Applicable instructions (shallow → deep):");
+    for p in &list {
+        println!("  {}", p.strip_prefix(&root).unwrap_or(p).display());
+    }
     Ok(())
 }

@@ -27,6 +27,7 @@ ctx task        Add a task
 ctx decide      Record a decision
 ctx complete    Mark work complete
 ctx next        Set next action
+ctx instructions [path]  Show merged instruction hierarchy
 ```
 
 ## Build
