@@ -106,7 +106,11 @@ mod tests {
         fs::create_dir_all(&dir).unwrap();
         let ctx = CtxDir::at(&dir);
         ctx.init().unwrap();
-        let cfg = Config { project_name: "demo".into(), checkpoint_counter: 3, created_at: None };
+        let cfg = Config {
+            project_name: "demo".into(),
+            checkpoint_counter: 3,
+            created_at: None,
+        };
         ctx.save_config(&cfg).unwrap();
         let loaded = ctx.load_config().unwrap();
         assert_eq!(loaded.checkpoint_counter, 3);

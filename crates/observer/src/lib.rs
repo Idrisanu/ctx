@@ -1,5 +1,5 @@
 use anyhow::{Context, Result};
-use ctx_core::{ProjectContext, EnvironmentState};
+use ctx_core::{EnvironmentState, ProjectContext};
 use std::path::{Path, PathBuf};
 use std::sync::mpsc::channel;
 use std::time::Duration;
@@ -18,16 +18,28 @@ pub fn watch(root: PathBuf, ctx_dir: PathBuf) -> Result<()> {
     loop {
         match rx.recv_timeout(Duration::from_millis(500)) {
             Ok(Ok(event)) => {
+                let mut changed = false;
                 for path in event.paths {
-                    if should_ignore(&path, &root) { continue; }
-                    let rel = path.strip_prefix(&root).unwrap_or(&path).to_string_lossy().to_string();
+                    if should_ignore(&path, &root) {
+                        continue;
+                    }
+                    let rel = path
+                        .strip_prefix(&root)
+                        .unwrap_or(&path)
+                        .to_string_lossy()
+                        .to_string();
                     if !state.files_changed.contains(&rel) {
                         state.files_changed.push(rel);
                         // keep bounded
-                        if state.files_changed.len() > 500 { state.files_changed.remove(0); }
+                        if state.files_changed.len() > 500 {
+                            state.files_changed.remove(0);
+                        }
+                        changed = true;
                     }
                 }
-                let _ = write_state(&ctx_dir, &state);
+                if changed {
+                    let _ = write_state(&ctx_dir, &state);
+                }
             }
             Ok(Err(e)) => eprintln!("watch error: {e}"),
             Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {}
@@ -40,7 +52,11 @@ pub fn watch(root: PathBuf, ctx_dir: PathBuf) -> Result<()> {
 fn should_ignore(path: &Path, root: &Path) -> bool {
     let rel = path.strip_prefix(root).unwrap_or(path);
     let s = rel.to_string_lossy();
-    s.starts_with(".git") || s.starts_with(".ctx") || s.contains("node_modules") || s.contains("/target/") || s == "target"
+    s.starts_with(".git")
+        || s.starts_with(".ctx")
+        || s.contains("node_modules")
+        || s.contains("/target/")
+        || s == "target"
 }
 
 fn load_state(ctx_dir: &Path) -> Option<ProjectContext> {

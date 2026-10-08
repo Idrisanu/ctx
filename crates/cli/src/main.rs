@@ -18,8 +18,12 @@ enum Commands {
     Doctor,
     History,
     Handoff,
-    Inspect { what: String },
-    Checkpoint { summary: Option<String> },
+    Inspect {
+        what: String,
+    },
+    Checkpoint {
+        summary: Option<String>,
+    },
     Resume {
         #[arg(long)]
         agent: Option<String>,
@@ -27,15 +31,23 @@ enum Commands {
     Recover,
     Diff,
     Watch,
-    Task { title: String },
+    Task {
+        title: String,
+    },
     Decide {
         text: String,
         #[arg(long)]
         reason: Option<String>,
     },
-    Complete { item: String },
-    Next { action: String },
-    Objective { text: String },
+    Complete {
+        item: String,
+    },
+    Next {
+        action: String,
+    },
+    Objective {
+        text: String,
+    },
 }
 
 fn project_root() -> PathBuf {
@@ -395,14 +407,22 @@ fn cmd_resume(agent: Option<String>) -> Result<()> {
     let state = ctx.load_state()?;
     let git = ctx_git::info(&root);
     let agent_name = agent.as_deref().unwrap_or("generic");
-    let adapter = ctx_adapters::get(agent_name)
-        .ok_or_else(|| anyhow::anyhow!("unknown agent '{}' (available: generic, opencode)", agent_name))?;
+    let adapter = ctx_adapters::get(agent_name).ok_or_else(|| {
+        anyhow::anyhow!(
+            "unknown agent '{}' (available: generic, opencode)",
+            agent_name
+        )
+    })?;
     let rendered = adapter.render(&state, &git);
     let dir = ctx.root.join("handoffs");
     std::fs::create_dir_all(&dir)?;
     let path = dir.join(format!("{}.md", adapter.name()));
     std::fs::write(&path, &rendered)?;
-    println!("Context prepared for '{}':\n{}", adapter.name(), path.display());
+    println!(
+        "Context prepared for '{}':\n{}",
+        adapter.name(),
+        path.display()
+    );
     Ok(())
 }
 
@@ -417,17 +437,35 @@ fn cmd_recover() -> Result<()> {
     match cps.last() {
         Some(cp) => println!(
             "Checkpoint: {} ({})\nBranch: {}\nCommit: {}\nFiles changed: {}\n",
-            cp.id, cp.created_at, cp.branch.as_deref().unwrap_or("-"),
-            cp.git_commit.as_deref().unwrap_or("-"), cp.files_changed
+            cp.id,
+            cp.created_at,
+            cp.branch.as_deref().unwrap_or("-"),
+            cp.git_commit.as_deref().unwrap_or("-"),
+            cp.files_changed
         ),
         None => println!("No checkpoints recorded yet.\n"),
     }
-    println!("Task:\n{}\n\nStatus: {}\n", state.objective.as_deref().unwrap_or("(unset)"), state.status);
+    println!(
+        "Task:\n{}\n\nStatus: {}\n",
+        state.objective.as_deref().unwrap_or("(unset)"),
+        state.status
+    );
     println!("Last changed files:");
-    let files = if git.dirty_files.is_empty() { &state.files_changed } else { &git.dirty_files };
-    for f in files { println!("{}", f); }
-    if files.is_empty() { println!("(none)"); }
-    println!("\nNext action:\n{}", state.next_action.as_deref().unwrap_or("(unset)"));
+    let files = if git.dirty_files.is_empty() {
+        &state.files_changed
+    } else {
+        &git.dirty_files
+    };
+    for f in files {
+        println!("{}", f);
+    }
+    if files.is_empty() {
+        println!("(none)");
+    }
+    println!(
+        "\nNext action:\n{}",
+        state.next_action.as_deref().unwrap_or("(unset)")
+    );
     Ok(())
 }
 
@@ -446,16 +484,25 @@ fn cmd_diff() -> Result<()> {
         Some(cp) => println!("Baseline: {}", cp.id),
         None => println!("Baseline: (none)"),
     }
-    println!("Branch: {} -> {}\n",
-        cps.last().and_then(|c| c.branch.clone()).as_deref().unwrap_or("-"),
-        git.branch.as_deref().unwrap_or("-"));
+    println!(
+        "Branch: {} -> {}\n",
+        cps.last()
+            .and_then(|c| c.branch.clone())
+            .as_deref()
+            .unwrap_or("-"),
+        git.branch.as_deref().unwrap_or("-")
+    );
     if !added.is_empty() {
         println!("New changes:");
-        for f in &added { println!("  + {}", f); }
+        for f in &added {
+            println!("  + {}", f);
+        }
     }
     if !removed.is_empty() {
         println!("Resolved/reverted:");
-        for f in &removed { println!("  - {}", f); }
+        for f in &removed {
+            println!("  - {}", f);
+        }
     }
     if added.is_empty() && removed.is_empty() {
         println!("No working-tree changes since last checkpoint.");
@@ -471,7 +518,11 @@ fn cmd_watch() -> Result<()> {
 fn cmd_task(title: String) -> Result<()> {
     let (ctx, _) = open_ctx()?;
     let mut state = ctx.load_state()?;
-    state.tasks.push(ctx_core::Task { title, status: "pending".into(), notes: None });
+    state.tasks.push(ctx_core::Task {
+        title,
+        status: "pending".into(),
+        notes: None,
+    });
     ctx.save_state(&state)?;
     println!("Task added.");
     Ok(())
