@@ -18,6 +18,15 @@ ctx history     List checkpoints
 ctx checkpoint  Create a manual checkpoint
 ctx handoff     Render a markdown handoff
 ctx inspect <what>  decisions | tasks | environment | agents
+ctx resume [--agent opencode|generic]  Prepare agent context
+ctx recover     Reconstruct last known state
+ctx diff        Context changes since last checkpoint
+ctx watch       Observe filesystem changes
+ctx objective   Set current objective
+ctx task        Add a task
+ctx decide      Record a decision
+ctx complete    Mark work complete
+ctx next        Set next action
 ```
 
 ## Build

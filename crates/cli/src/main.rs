@@ -20,6 +20,22 @@ enum Commands {
     Handoff,
     Inspect { what: String },
     Checkpoint { summary: Option<String> },
+    Resume {
+        #[arg(long)]
+        agent: Option<String>,
+    },
+    Recover,
+    Diff,
+    Watch,
+    Task { title: String },
+    Decide {
+        text: String,
+        #[arg(long)]
+        reason: Option<String>,
+    },
+    Complete { item: String },
+    Next { action: String },
+    Objective { text: String },
 }
 
 fn project_root() -> PathBuf {
@@ -47,6 +63,15 @@ fn main() -> Result<()> {
         Commands::Handoff => cmd_handoff(),
         Commands::Inspect { what } => cmd_inspect(&what),
         Commands::Checkpoint { summary } => cmd_checkpoint(summary),
+        Commands::Resume { agent } => cmd_resume(agent),
+        Commands::Recover => cmd_recover(),
+        Commands::Diff => cmd_diff(),
+        Commands::Watch => cmd_watch(),
+        Commands::Task { title } => cmd_task(title),
+        Commands::Decide { text, reason } => cmd_decide(text, reason),
+        Commands::Complete { item } => cmd_complete(item),
+        Commands::Next { action } => cmd_next(action),
+        Commands::Objective { text } => cmd_objective(text),
     }
 }
 
@@ -350,6 +375,7 @@ fn cmd_checkpoint(summary: Option<String>) -> Result<()> {
         agent: None,
         task: state.objective.clone(),
         files_changed: git.uncommitted_count,
+        files: git.dirty_files.clone(),
         status: state.status.clone(),
         created_at: chrono_now(),
         summary: summary.clone(),
@@ -361,5 +387,135 @@ fn cmd_checkpoint(summary: Option<String>) -> Result<()> {
         id,
         summary.map(|s| format!(": {}", s)).unwrap_or_default()
     );
+    Ok(())
+}
+
+fn cmd_resume(agent: Option<String>) -> Result<()> {
+    let (ctx, root) = open_ctx()?;
+    let state = ctx.load_state()?;
+    let git = ctx_git::info(&root);
+    let agent_name = agent.as_deref().unwrap_or("generic");
+    let adapter = ctx_adapters::get(agent_name)
+        .ok_or_else(|| anyhow::anyhow!("unknown agent '{}' (available: generic, opencode)", agent_name))?;
+    let rendered = adapter.render(&state, &git);
+    let dir = ctx.root.join("handoffs");
+    std::fs::create_dir_all(&dir)?;
+    let path = dir.join(format!("{}.md", adapter.name()));
+    std::fs::write(&path, &rendered)?;
+    println!("Context prepared for '{}':\n{}", adapter.name(), path.display());
+    Ok(())
+}
+
+fn cmd_recover() -> Result<()> {
+    let (ctx, root) = open_ctx()?;
+    let state = ctx.load_state()?;
+    let git = ctx_git::info(&root);
+    let cps = ctx.load_checkpoints()?;
+
+    println!("Last session");
+    println!("────────────────────\n");
+    match cps.last() {
+        Some(cp) => println!(
+            "Checkpoint: {} ({})\nBranch: {}\nCommit: {}\nFiles changed: {}\n",
+            cp.id, cp.created_at, cp.branch.as_deref().unwrap_or("-"),
+            cp.git_commit.as_deref().unwrap_or("-"), cp.files_changed
+        ),
+        None => println!("No checkpoints recorded yet.\n"),
+    }
+    println!("Task:\n{}\n\nStatus: {}\n", state.objective.as_deref().unwrap_or("(unset)"), state.status);
+    println!("Last changed files:");
+    let files = if git.dirty_files.is_empty() { &state.files_changed } else { &git.dirty_files };
+    for f in files { println!("{}", f); }
+    if files.is_empty() { println!("(none)"); }
+    println!("\nNext action:\n{}", state.next_action.as_deref().unwrap_or("(unset)"));
+    Ok(())
+}
+
+fn cmd_diff() -> Result<()> {
+    let (ctx, root) = open_ctx()?;
+    let git = ctx_git::info(&root);
+    let cps = ctx.load_checkpoints()?;
+
+    let last: Vec<String> = cps.last().map(|c| c.files.clone()).unwrap_or_default();
+    let now: Vec<String> = git.dirty_files.clone();
+    let added: Vec<_> = now.iter().filter(|f| !last.contains(f)).collect();
+    let removed: Vec<_> = last.iter().filter(|f| !now.contains(f)).collect();
+
+    println!("Context diff (vs last checkpoint)");
+    match cps.last() {
+        Some(cp) => println!("Baseline: {}", cp.id),
+        None => println!("Baseline: (none)"),
+    }
+    println!("Branch: {} -> {}\n",
+        cps.last().and_then(|c| c.branch.clone()).as_deref().unwrap_or("-"),
+        git.branch.as_deref().unwrap_or("-"));
+    if !added.is_empty() {
+        println!("New changes:");
+        for f in &added { println!("  + {}", f); }
+    }
+    if !removed.is_empty() {
+        println!("Resolved/reverted:");
+        for f in &removed { println!("  - {}", f); }
+    }
+    if added.is_empty() && removed.is_empty() {
+        println!("No working-tree changes since last checkpoint.");
+    }
+    Ok(())
+}
+
+fn cmd_watch() -> Result<()> {
+    let (ctx, root) = open_ctx()?;
+    ctx_observer::watch(root, ctx.root)
+}
+
+fn cmd_task(title: String) -> Result<()> {
+    let (ctx, _) = open_ctx()?;
+    let mut state = ctx.load_state()?;
+    state.tasks.push(ctx_core::Task { title, status: "pending".into(), notes: None });
+    ctx.save_state(&state)?;
+    println!("Task added.");
+    Ok(())
+}
+
+fn cmd_decide(text: String, reason: Option<String>) -> Result<()> {
+    let (ctx, _) = open_ctx()?;
+    let mut state = ctx.load_state()?;
+    let id = format!("CTX-{}", state.decisions.len() + 1);
+    state.decisions.push(ctx_core::Decision {
+        id,
+        decision: text,
+        reason,
+        recorded_at: Some(chrono::Utc::now().to_rfc3339()),
+    });
+    ctx.save_state(&state)?;
+    println!("Decision recorded.");
+    Ok(())
+}
+
+fn cmd_complete(item: String) -> Result<()> {
+    let (ctx, _) = open_ctx()?;
+    let mut state = ctx.load_state()?;
+    state.completed.push(item);
+    ctx.save_state(&state)?;
+    println!("Marked complete.");
+    Ok(())
+}
+
+fn cmd_next(action: String) -> Result<()> {
+    let (ctx, _) = open_ctx()?;
+    let mut state = ctx.load_state()?;
+    state.next_action = Some(action.clone());
+    ctx.save_state(&state)?;
+    println!("Next action set: {}", action);
+    Ok(())
+}
+
+fn cmd_objective(text: String) -> Result<()> {
+    let (ctx, _) = open_ctx()?;
+    let mut state = ctx.load_state()?;
+    state.objective = Some(text.clone());
+    state.status = "in_progress".into();
+    ctx.save_state(&state)?;
+    println!("Objective set: {}", text);
     Ok(())
 }

@@ -77,6 +77,8 @@ pub mod model {
         pub agent: Option<String>,
         pub task: Option<String>,
         pub files_changed: usize,
+        #[serde(default)]
+        pub files: Vec<String>,
         pub status: String,
         pub created_at: String,
         pub summary: Option<String>,
