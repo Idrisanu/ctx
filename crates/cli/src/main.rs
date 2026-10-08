@@ -44,6 +44,12 @@ enum Commands {
         text: String,
         #[arg(long)]
         reason: Option<String>,
+        /// Mark an existing decision as replaced by this one.
+        #[arg(long)]
+        supersedes: Option<String>,
+    },
+    Resolve {
+        id: String,
     },
     Complete {
         item: String,
@@ -111,7 +117,12 @@ fn main() -> Result<()> {
         Commands::Diff => cmd_diff(),
         Commands::Watch => cmd_watch(),
         Commands::Task { title } => cmd_task(title),
-        Commands::Decide { text, reason } => cmd_decide(text, reason),
+        Commands::Decide {
+            text,
+            reason,
+            supersedes,
+        } => cmd_decide(text, reason, supersedes),
+        Commands::Resolve { id } => cmd_resolve(id),
         Commands::Complete { item } => cmd_complete(item),
         Commands::Next { action } => cmd_next(action),
         Commands::Objective { text } => cmd_objective(text),
@@ -293,7 +304,7 @@ fn inject_cooperative_note(root: &std::path::Path) {
 
 fn inject_note_file(path: &std::path::Path) {
     let block = format!(
-        "{}\n## For AI coding agents (managed by CTX)\n\nMaintain `.ctx/handoffs/current.md` while working. Update it after every milestone, every batch of tool calls, and before ending a turn — not only at the end. Include:\n\n- Goal\n- Completed\n- Current work\n- Last command run (and its result)\n- Last error, if any\n- Next action\n- Blockers\n\nCTX reads this file to build the handoff when the session ends (token limit, crash, or tool switch). Keep it short and factual.\n{}\n",
+        "{}\n## For AI coding agents (managed by CTX)\n\nMaintain `.ctx/handoffs/current.md` while working. Update it after every milestone, every batch of tool calls, and before ending a turn — not only at the end. Include:\n\n- Goal\n- Completed\n- Current work\n- Last command run (and its result)\n- Last error, if any\n- Next action\n- Blockers\n\nCTX reads this file to build the handoff when the session ends (token limit, crash, or tool switch). Keep it short and factual.\n\nWhen you establish a lasting pattern or make an architectural choice, also record it with `ctx decide \"...\" --reason \"...\"` so the next agent cannot silently contradict it.\n{}\n",
         NOTE_BLOCK_START, NOTE_BLOCK_END
     );
     let existing = std::fs::read_to_string(path).unwrap_or_default();
@@ -385,6 +396,17 @@ fn cmd_status() -> Result<()> {
     }
     if let Some(ing) = &state.ingested {
         println!("Last ingested: {} ({})", ing.agent, ing.source);
+    }
+    let conflicts: Vec<_> = state
+        .decisions
+        .iter()
+        .filter(|d| d.conflicts_with.is_some())
+        .collect();
+    if !conflicts.is_empty() {
+        println!(
+            "⚠ {} possible decision conflict(s) — `ctx inspect decisions`",
+            conflicts.len()
+        );
     }
     Ok(())
 }
@@ -565,11 +587,19 @@ fn cmd_inspect(what: &str) -> Result<()> {
     match what {
         "decisions" => {
             for d in &state.decisions {
+                let mut tags = String::new();
+                if let Some(s) = &d.superseded_by {
+                    tags.push_str(&format!(" [superseded by {}]", s));
+                }
+                if let Some(c) = &d.conflicts_with {
+                    tags.push_str(&format!(" [⚠ possible conflict with {}]", c));
+                }
                 println!(
-                    "{}: {} — {}",
+                    "{}: {} — {}{}",
                     d.id,
                     d.decision,
-                    d.reason.as_deref().unwrap_or("")
+                    d.reason.as_deref().unwrap_or(""),
+                    tags
                 );
             }
             if state.decisions.is_empty() {
@@ -652,6 +682,27 @@ fn cmd_resume(agent: Option<String>) -> Result<()> {
         rendered.push_str(" + AI cooperative note");
     }
     rendered.push('\n');
+    let conflicts: Vec<_> = state
+        .decisions
+        .iter()
+        .filter(|d| d.conflicts_with.is_some())
+        .collect();
+    if !conflicts.is_empty() {
+        rendered.push_str("\n## ⚠ Possible decision conflicts (resolve before continuing)\n");
+        for d in &conflicts {
+            let other = d
+                .conflicts_with
+                .as_deref()
+                .and_then(|c| state.decisions.iter().find(|x| x.id == c));
+            rendered.push_str(&format!(
+                "- {} says: {}\n  but {} says: {}\n",
+                d.id,
+                d.decision,
+                other.map(|o| o.id.as_str()).unwrap_or("?"),
+                other.map(|o| o.decision.as_str()).unwrap_or("?")
+            ));
+        }
+    }
     if let Some(ing) = &state.ingested {
         rendered.push_str(&format!(
             "\n## Last AI session ({})\nGoal: {}\n",
@@ -792,19 +843,73 @@ fn cmd_task(title: String) -> Result<()> {
     Ok(())
 }
 
-fn cmd_decide(text: String, reason: Option<String>) -> Result<()> {
+fn cmd_decide(text: String, reason: Option<String>, supersedes: Option<String>) -> Result<()> {
     let (ctx, _) = open_ctx()?;
     let mut state = ctx.load_state()?;
     let id = format!("CTX-{}", state.decisions.len() + 1);
+
+    // Explicit replacement: retire the old decision, keep it in history.
+    if let Some(old_id) = supersedes.as_deref() {
+        match state.decisions.iter_mut().find(|d| d.id == old_id) {
+            Some(old) => {
+                old.superseded_by = Some(id.clone());
+                old.conflicts_with = None;
+            }
+            None => anyhow::bail!("no decision {} to supersede", old_id),
+        }
+    }
+
+    // Guardrail: flag possible contradictions with still-active decisions.
+    let mut flagged: Vec<String> = Vec::new();
+    for d in &state.decisions {
+        if !d.active() || Some(d.id.clone()) == supersedes {
+            continue;
+        }
+        if ctx_core::maybe_conflicts(&d.decision, &text) {
+            flagged.push(d.id.clone());
+        }
+    }
+
     state.decisions.push(ctx_core::Decision {
-        id,
+        id: id.clone(),
         decision: text,
         reason,
         recorded_at: Some(chrono::Utc::now().to_rfc3339()),
+        superseded_by: None,
+        conflicts_with: flagged.first().cloned(),
     });
     ctx.save_state(&state)?;
-    println!("Decision recorded.");
+
+    if flagged.is_empty() {
+        println!("Decision {} recorded.", id);
+    } else {
+        println!("Decision {} recorded with a possible conflict:", id);
+        for f in &flagged {
+            if let Some(old) = state.decisions.iter().find(|d| &d.id == f) {
+                println!("  ⚠ {} says: {}", old.id, old.decision);
+            }
+        }
+        println!("Review with `ctx inspect decisions`; resolve with");
+        println!(
+            "`ctx decide --supersedes <id> ...` or `ctx resolve {}`.",
+            id
+        );
+    }
     Ok(())
+}
+
+fn cmd_resolve(id: String) -> Result<()> {
+    let (ctx, _) = open_ctx()?;
+    let mut state = ctx.load_state()?;
+    match state.decisions.iter_mut().find(|d| d.id == id) {
+        Some(d) => {
+            d.conflicts_with = None;
+            ctx.save_state(&state)?;
+            println!("{} marked reviewed — conflict flag cleared.", id);
+            Ok(())
+        }
+        None => anyhow::bail!("no decision {}", id),
+    }
 }
 
 fn cmd_complete(item: String) -> Result<()> {

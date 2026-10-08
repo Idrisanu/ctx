@@ -9,6 +9,48 @@ pub mod model {
         pub decision: String,
         pub reason: Option<String>,
         pub recorded_at: Option<String>,
+        /// Id of the decision that replaced this one (history kept, not deleted).
+        #[serde(default)]
+        pub superseded_by: Option<String>,
+        /// Id of an active decision this one may contradict (human to resolve).
+        #[serde(default)]
+        pub conflicts_with: Option<String>,
+    }
+
+    impl Decision {
+        pub fn active(&self) -> bool {
+            self.superseded_by.is_none()
+        }
+    }
+
+    const STOPWORDS: &[&str] = &[
+        "the", "a", "an", "and", "or", "to", "for", "of", "in", "on", "with", "use", "using",
+        "used", "all", "our", "we", "should", "will", "be", "is", "are", "it", "as", "by", "at",
+        "from", "this", "that",
+    ];
+
+    fn content_tokens(s: &str) -> Vec<String> {
+        s.to_lowercase()
+            .split(|c: char| !c.is_alphanumeric())
+            .filter(|t| t.len() >= 4 && !STOPWORDS.contains(t))
+            .map(|t| t.to_string())
+            .collect()
+    }
+
+    /// Heuristic: do two decision texts talk about the same topic while
+    /// saying different things? Shared content tokens (len>=4, non-stopword)
+    /// with non-identical texts. Cheap on purpose — false positives cost a
+    /// glance, false negatives cost silent deformation.
+    pub fn maybe_conflicts(a: &str, b: &str) -> bool {
+        let ta = content_tokens(a);
+        let tb = content_tokens(b);
+        if ta.is_empty() || tb.is_empty() {
+            return false;
+        }
+        if a.trim().eq_ignore_ascii_case(b.trim()) {
+            return false;
+        }
+        ta.iter().any(|t| tb.contains(t))
     }
 
     #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -159,5 +201,19 @@ mod tests {
         let back: ProjectContext = serde_json::from_str(&j).unwrap();
         assert_eq!(back.project, "demo");
         assert_eq!(back.constraints, vec!["Use TypeScript"]);
+    }
+    #[test]
+    fn conflict_heuristic() {
+        // same topic, different choice -> flag
+        assert!(maybe_conflicts(
+            "Use PostgreSQL for the database",
+            "Switch database to MongoDB"
+        ));
+        // unrelated topics -> quiet
+        assert!(!maybe_conflicts("Use TypeScript", "Use PostgreSQL"));
+        // identical -> not a conflict
+        assert!(!maybe_conflicts("Use TypeScript", "use typescript"));
+        // nothing substantive -> quiet
+        assert!(!maybe_conflicts("Use it", "Do it"));
     }
 }

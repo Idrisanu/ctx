@@ -98,7 +98,7 @@ impl Adapter for OpenCodeAdapter {
         }
         if !state.decisions.is_empty() {
             out.push_str("## Decisions\n");
-            for d in &state.decisions {
+            for d in state.decisions.iter().filter(|d| d.active()) {
                 out.push_str(&format!("- **{}**", d.decision));
                 if let Some(r) = &d.reason {
                     out.push_str(&format!(" — {}", r));
@@ -165,7 +165,7 @@ impl Adapter for FlavoredAdapter {
         }
         if !state.decisions.is_empty() {
             out.push_str("## Decisions (do not contradict without asking)\n");
-            for d in &state.decisions {
+            for d in state.decisions.iter().filter(|d| d.active()) {
                 out.push_str(&format!("- **{}**", d.decision));
                 if let Some(r) = &d.reason {
                     out.push_str(&format!(" — {}", r));
@@ -274,6 +274,8 @@ mod tests {
             decision: "PostgreSQL".into(),
             reason: None,
             recorded_at: None,
+            superseded_by: None,
+            conflicts_with: None,
         });
         let g = GitInfo::default();
         for n in names() {
