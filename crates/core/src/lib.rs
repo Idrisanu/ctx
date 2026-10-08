@@ -35,8 +35,10 @@ pub mod model {
         pub env_vars_missing: Vec<String>,
     }
 
-    #[derive(Debug, Clone, Serialize, Deserialize, Default)]
+    #[derive(Debug, Clone, Serialize, Deserialize)]
     pub struct ProjectContext {
+        #[serde(default = "default_version")]
+        pub version: u32,
         pub project: String,
         pub objective: Option<String>,
         pub status: String,
@@ -59,7 +61,54 @@ pub mod model {
         pub sessions: Vec<SessionMeta>,
         #[serde(default)]
         pub environment: EnvironmentState,
+        /// Compressed summary of the most recently ingested AI session.
+        /// Set by `ctx ingest`; source tracked for honest provenance.
+        #[serde(default)]
+        pub ingested: Option<ctx_ingest_summary::Ingested>,
     }
+
+    impl Default for ProjectContext {
+        fn default() -> Self {
+            Self {
+                version: 1,
+                project: String::new(),
+                objective: None,
+                status: String::new(),
+                completed: vec![],
+                current_work: vec![],
+                decisions: vec![],
+                constraints: vec![],
+                files_changed: vec![],
+                errors: vec![],
+                next_action: None,
+                tasks: vec![],
+                sessions: vec![],
+                environment: Default::default(),
+                ingested: None,
+            }
+        }
+    }
+
+    fn default_version() -> u32 {
+        1
+    }
+
+    /// Inline minimal copy to avoid core→ingest dependency cycle.
+    pub mod ctx_ingest_summary {
+        use serde::{Deserialize, Serialize};
+        #[derive(Debug, Clone, Serialize, Deserialize, Default)]
+        pub struct Ingested {
+            pub agent: String,
+            pub goal: Option<String>,
+            pub last_user_message: Option<String>,
+            pub last_assistant_excerpt: Option<String>,
+            pub errors: Vec<String>,
+            pub files_touched: Vec<String>,
+            pub commands: Vec<String>,
+            pub source: String,
+        }
+    }
+    pub use ctx_ingest_summary::Ingested;
 
     #[derive(Debug, Clone, Serialize, Deserialize, Default)]
     pub struct Config {

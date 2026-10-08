@@ -51,6 +51,12 @@ enum Commands {
     Instructions {
         path: Option<String>,
     },
+    Ingest {
+        from: Option<String>,
+    },
+    Agents,
+    #[command(name = "checkpoint-auto")]
+    CheckpointAuto,
 }
 
 fn project_root() -> PathBuf {
@@ -88,6 +94,9 @@ fn main() -> Result<()> {
         Commands::Next { action } => cmd_next(action),
         Commands::Objective { text } => cmd_objective(text),
         Commands::Instructions { path } => cmd_instructions(path),
+        Commands::Ingest { from } => cmd_ingest(from),
+        Commands::Agents => cmd_agents(),
+        Commands::CheckpointAuto => cmd_checkpoint_auto(),
     }
 }
 
@@ -159,7 +168,59 @@ fn cmd_init() -> Result<()> {
     );
     println!("Instruction files found: {}", docs.instructions.len());
     println!("Runtimes: {:?}", state.environment.runtimes);
+
+    inject_cooperative_note(&root);
+    install_git_hook(&root);
     Ok(())
+}
+
+const NOTE_BLOCK_START: &str = "<!-- CTX:START -->";
+const NOTE_BLOCK_END: &str = "<!-- CTX:END -->";
+
+fn inject_cooperative_note(root: &std::path::Path) {
+    let path = root.join("AGENTS.md");
+    let block = format!(
+        "{}\n## For AI coding agents (managed by CTX)\n\nMaintain `.ctx/handoffs/current.md` while working. Before ending a turn or when you are about to stop, update it with:\n\n- Goal\n- Completed\n- Current work\n- Next action\n- Blockers\n\nCTX reads this file to build the handoff for the next agent. Keep it short and factual.\n{}\n",
+        NOTE_BLOCK_START, NOTE_BLOCK_END
+    );
+    let existing = std::fs::read_to_string(&path).unwrap_or_default();
+    let updated = if let (Some(s), Some(e)) = (
+        existing.find(NOTE_BLOCK_START),
+        existing.find(NOTE_BLOCK_END),
+    ) {
+        let end = e + NOTE_BLOCK_END.len();
+        format!("{}{}{}", &existing[..s], block, &existing[end..])
+    } else if existing.is_empty() {
+        block
+    } else {
+        format!("{}\n\n{}", existing.trim_end(), block)
+    };
+    if let Err(e) = std::fs::write(&path, updated) {
+        eprintln!("warning: could not update AGENTS.md: {}", e);
+    } else {
+        println!("AGENTS.md updated with CTX note instructions.");
+    }
+}
+
+fn install_git_hook(root: &std::path::Path) {
+    let hooks = root.join(".git").join("hooks");
+    if !hooks.is_dir() {
+        return;
+    }
+    let exe = std::env::current_exe().unwrap_or_else(|_| PathBuf::from("ctx"));
+    let hook = format!(
+        "#!/bin/sh\n\"{}\" checkpoint-auto >/dev/null 2>&1 || true\n",
+        exe.display()
+    );
+    let path = hooks.join("post-commit");
+    if std::fs::write(&path, hook).is_ok() {
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let _ = std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755));
+        }
+        println!("git post-commit hook installed (auto-checkpoint).");
+    }
 }
 
 fn chrono_now() -> String {
@@ -188,6 +249,25 @@ fn cmd_status() -> Result<()> {
     }
     if let Some(next) = &state.next_action {
         println!("Next:\n{}", next);
+    }
+    println!();
+    let note = root.join(".ctx/handoffs/current.md");
+    if note.exists() {
+        if let Ok(meta) = std::fs::metadata(&note) {
+            if let Ok(mtime) = meta.modified() {
+                let age = mtime.elapsed().unwrap_or_default().as_secs();
+                if age > 24 * 3600 {
+                    println!("⚠ AI note is {}h old — may be stale", age / 3600);
+                } else {
+                    println!("AI note: present ({}h old)", age / 3600);
+                }
+            }
+        }
+    } else {
+        println!("AI note: not created yet (agent may not follow AGENTS.md instructions)");
+    }
+    if let Some(ing) = &state.ingested {
+        println!("Last ingested: {} ({})", ing.agent, ing.source);
     }
     Ok(())
 }
@@ -429,6 +509,34 @@ fn cmd_resume(agent: Option<String>) -> Result<()> {
         )
     })?;
     let mut rendered = adapter.render(&state, &git);
+    // provenance: say where each part came from
+    rendered.push_str("\n---\nSources: project/git state");
+    if state.ingested.is_some() {
+        rendered.push_str(" + ingested AI session");
+    }
+    if root.join(".ctx/handoffs/current.md").exists() {
+        rendered.push_str(" + AI cooperative note");
+    }
+    rendered.push('\n');
+    if let Some(ing) = &state.ingested {
+        rendered.push_str(&format!(
+            "\n## Last AI session ({})\nGoal: {}\n",
+            ing.agent,
+            ing.goal.as_deref().unwrap_or("(unknown)")
+        ));
+        if let Some(g) = &ing.last_user_message {
+            rendered.push_str(&format!("Last request: {}\n", g));
+        }
+        if let Some(a) = &ing.last_assistant_excerpt {
+            rendered.push_str(&format!("Last assistant message: {}\n", a));
+        }
+        if !ing.errors.is_empty() {
+            rendered.push_str("Errors:\n");
+            for e in &ing.errors {
+                rendered.push_str(&format!("- {}\n", e));
+            }
+        }
+    }
     let cwd = project_root();
     let merged = ctx_context::merged_instructions(&root, &cwd);
     if !merged.is_empty() {
@@ -609,5 +717,152 @@ fn cmd_instructions(path: Option<String>) -> Result<()> {
     for p in &list {
         println!("  {}", p.strip_prefix(&root).unwrap_or(p).display());
     }
+    Ok(())
+}
+
+fn cmd_ingest(from: Option<String>) -> Result<()> {
+    let (ctx, root) = open_ctx()?;
+    let mut state = ctx.load_state()?;
+
+    let session = match &from {
+        Some(path) => parse_generic_jsonl(std::path::Path::new(path), &root),
+        None => ctx_ingest::latest_for(&root),
+    };
+
+    let Some(session) = session else {
+        println!("No AI session found for this project.");
+        return Ok(());
+    };
+
+    let compressed = ctx_ingest::compress(&session);
+    if state.objective.is_none() {
+        state.objective = compressed.goal.clone();
+    }
+    for e in &compressed.errors {
+        if !state.errors.contains(e) {
+            state.errors.push(e.clone());
+        }
+    }
+    for f in &compressed.files_touched {
+        if !state.files_changed.contains(f) {
+            state.files_changed.push(f.clone());
+        }
+    }
+    state.ingested = Some(ctx_core::Ingested {
+        agent: compressed.agent.clone(),
+        goal: compressed.goal.clone(),
+        last_user_message: compressed.last_user_message.clone(),
+        last_assistant_excerpt: compressed.last_assistant_excerpt.clone(),
+        errors: compressed.errors.clone(),
+        files_touched: compressed.files_touched.clone(),
+        commands: compressed.commands.clone(),
+        source: compressed.source.clone(),
+    });
+    ctx.save_state(&state)?;
+
+    println!("Ingested {} ({})", compressed.agent, compressed.source);
+    if let Some(g) = &compressed.goal {
+        println!("Goal: {}", g);
+    }
+    if let Some(e) = &compressed.last_assistant_excerpt {
+        println!("Last message: {}", e);
+    }
+    if !compressed.errors.is_empty() {
+        println!("Errors: {}", compressed.errors.len());
+    }
+    Ok(())
+}
+
+fn parse_generic_jsonl(
+    path: &std::path::Path,
+    root: &std::path::Path,
+) -> Option<ctx_ingest::SessionInfo> {
+    let mut first_user = None;
+    let mut last_user = None;
+    let mut last_assistant = None;
+    ctx_ingest::_read_jsonl(path, |v| {
+        let t = v.get("type").and_then(|t| t.as_str()).unwrap_or("");
+        let text = v
+            .get("text")
+            .and_then(|t| t.as_str())
+            .map(|s| s.to_string())
+            .or_else(|| v.get("content").map(ctx_ingest::content_text))
+            .or_else(|| {
+                v.get("message").map(|m| {
+                    ctx_ingest::content_text(m.get("content").unwrap_or(&serde_json::Value::Null))
+                })
+            })
+            .unwrap_or_default();
+        if text.is_empty() {
+            return;
+        }
+        match t {
+            "user" => {
+                if first_user.is_none() {
+                    first_user = Some(ctx_ingest::excerpt(&text, 300));
+                }
+                last_user = Some(ctx_ingest::excerpt(&text, 300));
+            }
+            "assistant" => last_assistant = Some(ctx_ingest::excerpt(&text, 400)),
+            _ => {}
+        }
+    })
+    .ok()?;
+    Some(ctx_ingest::SessionInfo {
+        agent: "generic".into(),
+        session_id: path.file_stem()?.to_string_lossy().into(),
+        project_dir: root.to_path_buf(),
+        updated_unix: std::fs::metadata(path)
+            .ok()?
+            .modified()
+            .ok()?
+            .duration_since(std::time::UNIX_EPOCH)
+            .ok()?
+            .as_secs() as i64,
+        first_user_message: first_user,
+        last_user_message: last_user,
+        last_assistant_excerpt: last_assistant,
+        ..Default::default()
+    })
+}
+
+fn cmd_agents() -> Result<()> {
+    let root = project_root();
+    println!("Detected agents / session sources:");
+    for (name, found) in ctx_ingest::detected(&root) {
+        println!("{} {}", if found { "✓" } else { "✗" }, name);
+    }
+    println!();
+    println!("Generic fallback: ctx ingest --from <transcript.jsonl>");
+    Ok(())
+}
+
+fn cmd_checkpoint_auto() -> Result<()> {
+    let Ok((ctx, root)) = open_ctx() else {
+        return Ok(());
+    };
+    let mut config = match ctx.load_config() {
+        Ok(c) => c,
+        Err(_) => return Ok(()),
+    };
+    let git = ctx_git::info(&root);
+    let now = chrono::Utc::now().to_rfc3339().to_string();
+    config.checkpoint_counter += 1;
+    let id = ctx_core::next_checkpoint_id(config.checkpoint_counter);
+    let mut cps = ctx.load_checkpoints().unwrap_or_default();
+    cps.push(ctx_core::Checkpoint {
+        id,
+        git_commit: git.last_commit,
+        branch: git.branch,
+        agent: None,
+        task: None,
+        files_changed: git.uncommitted_count,
+        files: git.dirty_files,
+        status: "auto".into(),
+        created_at: now,
+        summary: Some("auto (post-commit)".into()),
+    });
+    let _ = ctx.save_config(&config);
+    let _ = ctx.save_checkpoints(&cps);
     Ok(())
 }

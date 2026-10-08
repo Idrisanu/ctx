@@ -9,6 +9,7 @@ members = [
     "crates/context",
     "crates/observer",
     "crates/adapters",
+    "crates/ingest",
 ]
 
 [workspace.package]
