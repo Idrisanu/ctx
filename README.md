@@ -54,6 +54,56 @@ This installs the latest `v*` release to `~/.local/bin` (or
 `%USERPROFILE%\.local\bin` on Windows). Pin a version with
 `CTX_VERSION=v0.1.0` (sh) / `$env:CTX_VERSION="v0.1.0"` (PowerShell).
 
+### Linux — step by step
+
+1. Open a terminal. No prerequisites (curl is preinstalled on virtually
+   all distros; the `ctx` binary itself needs nothing).
+2. Run:
+   ```bash
+   curl -fsSL https://raw.githubusercontent.com/Idrisanu/ctx/main/install.sh | sh
+   ```
+3. If the installer says `~/.local/bin is not on your PATH`, add it:
+   ```bash
+   echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.bashrc   # or ~/.zshrc
+   source ~/.bashrc   # or open a new terminal
+   ```
+4. Verify: `ctx --help` lists all commands.
+5. First run in a project: `cd your-project && ctx init`.
+
+### macOS — step by step
+
+1. Open Terminal. No prerequisites.
+2. Run:
+   ```bash
+   curl -fsSL https://raw.githubusercontent.com/Idrisanu/ctx/main/install.sh | sh
+   ```
+   (Apple Silicon downloads the `aarch64` build, Intel the `x86_64` one.)
+3. If `~/.local/bin` isn't on your PATH:
+   ```bash
+   echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.zshrc
+   source ~/.zshrc   # or open a new terminal
+   ```
+4. First launch: macOS Gatekeeper blocks unsigned binaries. Either
+   right-click the `ctx` binary → **Open** once, or run:
+   ```bash
+   xattr -d com.apple.quarantine $(which ctx)
+   ```
+5. Verify: `ctx --help`. First run in a project: `ctx init`.
+
+### Windows — step by step
+
+1. Open PowerShell (no admin needed, no prerequisites).
+2. Run:
+   ```powershell
+   irm https://raw.githubusercontent.com/Idrisanu/ctx/main/install.ps1 | iex
+   ```
+3. If `%USERPROFILE%\.local\bin` isn't on your PATH: open *System
+   Properties → Environment Variables*, append it to your user `Path`,
+   then open a new terminal.
+4. First run: SmartScreen may warn since the binary is unsigned —
+   choose **More info → Run anyway**.
+5. Verify: `ctx --help`. First run in a project: `cd your-project; ctx init`.
+
 > **macOS note:** the binary isn't Apple-signed, so Gatekeeper blocks the
 > first run. Right-click `ctx` → Open once, or run:
 > `xattr -d com.apple.quarantine $(which ctx)`.
