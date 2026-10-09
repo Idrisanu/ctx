@@ -56,7 +56,7 @@
     </div>
     <div class="card reveal">
       <h3>🧠 Switching tools = amnesia</h3>
-      <p>Codex did the backend, now Gemini does the frontend — but Gemini never
+      <p>Codex did the backend, now Claude does the frontend — but Claude never
       met your project. Each tool keeps its understanding locked inside itself.</p>
     </div>
   </div>
@@ -95,7 +95,7 @@
     <div class="card reveal">
       <h3>B · Session ingestion</h3>
       <p><code>ctx ingest</code> / <code>ctx monitor</code> read Claude Code transcripts,
-      the OpenCode session store, and Gemini CLI chats: prompts, commands run,
+      the OpenCode session store, and Codex rollout logs: prompts, commands run,
       files touched, errors, token usage. Summaries only — transcripts never stored.</p>
     </div>
     <div class="card reveal">
@@ -137,7 +137,6 @@
     <tr><th>Agent</th><th>Note via</th><th>Transcript</th><th>Handoff</th></tr>
     <tr><td>Claude Code</td><td>CLAUDE.md</td><td>✓ JSONL</td><td><code>--agent claude</code></td></tr>
     <tr><td>OpenCode</td><td>AGENTS.md</td><td>✓ SQLite</td><td><code>--agent opencode</code></td></tr>
-    <tr><td>Gemini CLI</td><td>GEMINI.md</td><td>✓ existing chats (free-tier access ended Jun 2026)</td><td><code>--agent gemini</code></td></tr>
     <tr><td>Codex</td><td>AGENTS.md</td><td>✓ rollout JSONL</td><td><code>--agent codex</code></td></tr>
     <tr><td>Copilot / VS Code</td><td>copilot instructions</td><td>none on disk — note + git</td><td><code>--agent copilot</code></td></tr>
     <tr><td>Anything else</td><td>AGENTS.md</td><td><code>ingest --from file.jsonl</code></td><td><code>generic</code></td></tr>
@@ -192,8 +191,7 @@ cargo install --path crates/cli</pre>
     </details>
     <details>
       <summary>What if my agent doesn't cooperate with the note?</summary>
-      <p>You still get git state, checkpoints, and — for Claude Code, OpenCode, and
-      Gemini CLI — transcript ingestion, which needs no cooperation at all. The note
+      <p>You still get git state, checkpoints, and — for Claude Code, OpenCode, and Codex — transcript ingestion, which needs no cooperation at all. The note
       is the best channel, not the only one, and <code>ctx resume</code> tells you
       which layers it used.</p>
     </details>

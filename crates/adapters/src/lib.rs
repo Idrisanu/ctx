@@ -11,7 +11,7 @@ pub struct OpenCodeAdapter;
 
 /// Same canonical content, formatted for the tool about to read it.
 /// The adapter only changes how ctx talks — it never renames or moves
-/// project files (AGENTS.md / CLAUDE.md / GEMINI.md stay as they are).
+/// project files (AGENTS.md / CLAUDE.md stay as they are).
 pub struct FlavoredAdapter {
     id: &'static str,
     label: &'static str,
@@ -26,11 +26,6 @@ pub fn get(name: &str) -> Option<Box<dyn Adapter>> {
             id: "claude",
             label: "Claude Code",
             doc_pointer: "CLAUDE.md (or AGENTS.md) in the repo root",
-        })),
-        "gemini" | "gemini-cli" => Some(Box::new(FlavoredAdapter {
-            id: "gemini",
-            label: "Gemini CLI",
-            doc_pointer: "GEMINI.md (or AGENTS.md) in the repo root",
         })),
         "codex" => Some(Box::new(FlavoredAdapter {
             id: "codex",
@@ -48,9 +43,7 @@ pub fn get(name: &str) -> Option<Box<dyn Adapter>> {
 
 /// All adapter names `ctx resume` / `ctx handoff` accept.
 pub fn names() -> Vec<&'static str> {
-    vec![
-        "generic", "opencode", "claude", "gemini", "codex", "copilot",
-    ]
+    vec!["generic", "opencode", "claude", "codex", "copilot"]
 }
 
 impl Adapter for GenericAdapter {

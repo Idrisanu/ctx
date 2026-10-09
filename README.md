@@ -32,8 +32,8 @@ rebuilds it from three layers, best available wins:
 
 | Layer | Source | What it captures |
 |---|---|---|
-| **A — Cooperative note** | The agent maintains `.ctx/handoffs/current.md` (instructed via `AGENTS.md` / `GEMINI.md` / `CLAUDE.md`) | Goal, completed, current work, last commands, next action, blockers |
-| **B — Session ingestion** | `ctx ingest` / `ctx monitor` read Claude Code transcripts, the OpenCode session store, and Gemini CLI chats | Prompts, replies, commands run, files touched, errors, token usage |
+| **A — Cooperative note** | The agent maintains `.ctx/handoffs/current.md` (instructed via `AGENTS.md` / `CLAUDE.md`) | Goal, completed, current work, last commands, next action, blockers |
+| **B — Session ingestion** | `ctx ingest` / `ctx monitor` read Claude Code transcripts, the OpenCode session store, and Codex rollout logs | Prompts, replies, commands run, files touched, errors, token usage |
 | **C — Reconstruction** | Git state, checkpoints, `ctx doctor` | Changed files, branch, commits, environment. Always works. |
 
 Every `ctx resume` labels which layers produced it, and never claims data
@@ -128,7 +128,7 @@ your local binary.
 
 ```bash
 cd your-project
-ctx init --agent gemini   # one time: .ctx/, git hook, agent instruction
+ctx init --agent claude-code   # one time: .ctx/, git hook, agent instruction
 git add -A && git commit -m "init"
 
 # ...work with your AI agent...
@@ -148,8 +148,8 @@ ctx init [--yes] [--agent <name,...>]
 One-time setup per project: creates `.ctx/`, installs a git post-commit
 hook (every commit becomes a checkpoint automatically), writes the
 cooperative-note instruction into your agent's file, and detects readable
-AI sessions. Offers to run `git init` if needed. `--agent gemini` writes
-to `GEMINI.md` (`claude` → `CLAUDE.md`, `copilot` → copilot instructions,
+AI sessions. Offers to run `git init` if needed. `--agent claude-code` writes
+to `CLAUDE.md` (`copilot` → copilot instructions,
 `codex`/`opencode` → `AGENTS.md`) and makes bare `ctx resume` default to
 that agent. Re-running refreshes everything without losing state.
 
@@ -157,7 +157,7 @@ that agent. Re-running refreshes everything without losing state.
 ctx agents
 ```
 Show which AI session sources this machine can read (claude-code,
-opencode, gemini). Notes honestly when a tool keeps no transcript
+opencode). Notes honestly when a tool keeps no transcript
 (Copilot/VS Code) and what to do instead.
 
 ```
@@ -188,7 +188,7 @@ Build the handoff file (`.ctx/handoffs/<agent>.md`) for the next agent:
 goal, completed, current work, changed files, uncommitted frontier,
 recent commands, errors, decisions, project instructions, project-doc
 pointers, and provenance. Flavors: `generic`, `opencode`, `claude`,
-`gemini`, `codex`, `copilot`. Defaults to your `init --agent`, else
+`codex`, `copilot`. Defaults to your `init --agent`, else
 generic. Warns when the tree is dirty.
 
 ```
@@ -276,7 +276,7 @@ commit normally, you may never need them.
 
 ## The token-limit scenario
 
-1. `ctx init --agent gemini` in the project (once).
+1. `ctx init --agent claude-code` in the project (once).
 2. Work. The agent maintains `.ctx/handoffs/current.md`; commits
    auto-checkpoint; `ctx monitor` (optional) tracks the live session.
 3. Token limit hits mid-milestone.
@@ -297,7 +297,6 @@ so it reads the authoritative text instead of a stale copy.
 |---|---|---|---|
 | Claude Code | `CLAUDE.md` | `~/.claude/projects/*.jsonl` | `claude` |
 | OpenCode | `AGENTS.md` | session SQLite store | `opencode` |
-| Gemini CLI | `GEMINI.md` | `~/.gemini/tmp/*/chats/*` (existing transcripts; free-tier access ended June 2026) | `gemini` |
 | Codex | `AGENTS.md` | rollout JSONL via session SQLite | `codex` |
 | Copilot / VS Code | copilot instructions | none on disk — note + git is the design | `copilot` |
 | Anything else | `AGENTS.md` | `ctx ingest --from file.jsonl` | `generic` |
@@ -333,7 +332,7 @@ Planned:
 - crates.io publish (`cargo install ctx`)
 
 Already shipped: `ctx switch`, `ctx verify`, prebuilt binaries +
-one-line install, Gemini/Claude/OpenCode readers, conflict detection.
+one-line install, Codex/Claude/OpenCode readers, conflict detection.
 
 ## Why not just use X?
 

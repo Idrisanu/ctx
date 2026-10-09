@@ -2,8 +2,8 @@
 document.body.classList.add("js");
 const SCRIPT = [
   ["p", "$ ctx init --agent claude-code"],
-  ["c", "Refreshed CTX in ./ctx-demo2/.ctx\nAGENTS.md + GEMINI.md updated with CTX note instructions.\ngit post-commit hook installed (auto-checkpoint)."],
-  ["p", "$ # ...Gemini builds the landing page for an hour..."],
+  ["c", "Refreshed CTX in ./ctx-demo2/.ctx\nAGENTS.md + CLAUDE.md updated with CTX note instructions.\ngit post-commit hook installed (auto-checkpoint)."],
+  ["p", "$ # ...Claude builds the landing page for an hour..."],
   ["p", "$ npm run build"],
   ["c", "✓ Compiled successfully\n✓ 3 static routes generated"],
   ["p", "$ git add -A && git commit -m \"claude: landing page + docs section\""],

@@ -9,7 +9,6 @@ const NOTE_BLOCK_END: &str = "<!-- CTX:END -->";
 pub(crate) fn agent_instruction_file(agent: &str) -> Option<&'static str> {
     match agent {
         "claude" | "claude-code" => Some("CLAUDE.md"),
-        "gemini" | "gemini-cli" => Some("GEMINI.md"),
         "copilot" | "vscode" => Some(".github/copilot-instructions.md"),
         "codex" | "opencode" | "generic" => None,
         _ => None,
@@ -22,8 +21,6 @@ pub(crate) fn init_agent_names() -> Vec<&'static str> {
     vec![
         "claude",
         "claude-code",
-        "gemini",
-        "gemini-cli",
         "codex",
         "copilot",
         "vscode",
@@ -36,11 +33,9 @@ pub(crate) fn inject_cooperative_note(root: &std::path::Path, extra_files: &[Str
     // own file when the project already uses it or was declared with
     // --agent. Never rename files.
     let mut targets = vec![root.join("AGENTS.md")];
-    for name in ["CLAUDE.md", "GEMINI.md"] {
-        let p = root.join(name);
-        if p.exists() {
-            targets.push(p);
-        }
+    let claude = root.join("CLAUDE.md");
+    if claude.exists() {
+        targets.push(claude);
     }
     for extra in extra_files {
         let p = root.join(extra);

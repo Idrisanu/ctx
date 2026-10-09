@@ -17,7 +17,7 @@ enum Commands {
         /// Run git init without asking when this folder is not a repo yet
         #[arg(long)]
         yes: bool,
-        /// Declare your agent(s), comma-separated: claude, gemini, codex,
+        /// Declare your agent(s), comma-separated: claude, codex,
         /// copilot, opencode. Writes the note into their instruction file
         /// and makes bare `ctx resume` default to it.
         #[arg(long)]
@@ -31,7 +31,7 @@ enum Commands {
     History,
     /// Print the current handoff, optionally flavored per agent
     Handoff {
-        /// Flavor the output: generic, opencode, claude, gemini, codex, copilot
+        /// Flavor the output: generic, opencode, claude, codex, copilot
         #[arg(long)]
         agent: Option<String>,
     },
@@ -47,7 +47,7 @@ enum Commands {
     },
     /// Build the handoff file for the next agent to read
     Resume {
-        /// Flavor the output: generic, opencode, claude, gemini, codex, copilot
+        /// Flavor the output: generic, opencode, claude, codex, copilot
         #[arg(long)]
         agent: Option<String>,
     },
@@ -57,7 +57,7 @@ enum Commands {
     Verify,
     /// Checkpoint, archive the outgoing note, and render for a new agent
     Switch {
-        /// Agent to switch to: opencode, claude, gemini, codex, copilot, generic
+        /// Agent to switch to: opencode, claude, codex, copilot, generic
         agent: String,
     },
     /// Show working-tree changes since the last checkpoint

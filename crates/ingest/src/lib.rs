@@ -5,7 +5,6 @@ use std::path::{Path, PathBuf};
 pub mod agent;
 pub mod claude;
 pub mod codex;
-pub mod gemini;
 pub mod opencode;
 
 pub use agent::SessionReader;
@@ -21,8 +20,8 @@ pub struct SessionInfo {
     pub first_user_message: Option<String>,
     pub last_user_message: Option<String>,
     pub last_assistant_excerpt: Option<String>,
-    /// Latest progress summary, when the agent reports one
-    /// (e.g. Gemini update_topic). None when absent.
+    /// Latest progress summary, when the agent reports one.
+    /// None when absent.
     #[serde(default)]
     pub progress: Option<String>,
     /// Summed message token totals, when the store reports them.
@@ -55,7 +54,6 @@ pub fn registry() -> Vec<Box<dyn SessionReader>> {
     vec![
         Box::new(claude::ClaudeCodeReader),
         Box::new(opencode::OpenCodeReader),
-        Box::new(gemini::GeminiReader),
         Box::new(codex::CodexReader),
     ]
 }
