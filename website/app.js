@@ -1,4 +1,5 @@
 // Typed terminal demo: the token-limit scenario.
+document.body.classList.add("js");
 const SCRIPT = [
   ["p", "$ ctx init --agent gemini"],
   ["c", "Refreshed CTX in ./ctx-demo2/.ctx\nAGENTS.md + GEMINI.md updated with CTX note instructions.\ngit post-commit hook installed (auto-checkpoint)."],
@@ -53,6 +54,12 @@ function play() {
 }
 
 document.getElementById("replay").addEventListener("click", play);
+
+// Scroll-reveal (respects reduced motion via CSS)
+const io = new IntersectionObserver((entries) => {
+  entries.forEach(e => { if (e.isIntersecting) { e.target.classList.add("visible"); io.unobserve(e.target); } });
+}, { threshold: 0.12 });
+document.querySelectorAll(".reveal").forEach(el => io.observe(el));
 
 // Install tabs
 const tabs = document.querySelectorAll(".tabs button");

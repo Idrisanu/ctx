@@ -5,37 +5,82 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>CTX — Git for AI context</title>
 <meta name="description" content="CTX is a local-first CLI that preserves project state across AI sessions, tools, and machines. Your AI shouldn't forget just because you changed the tool.">
+<meta property="og:title" content="CTX — Git for AI context">
+<meta property="og:description" content="Token limit hit mid-milestone? Switch agents without losing your place. Open-source, local-first, no cloud.">
+<meta property="og:type" content="website">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%230b0f14'/%3E%3Ctext x='16' y='23' font-family='monospace' font-size='17' font-weight='bold' fill='%234ade80' text-anchor='middle'%3Ecx%3C/text%3E%3C/svg%3E">
 <link rel="stylesheet" href="styles.css">
 </head>
 <body>
 <header class="nav">
-  <a class="logo" href="#">ctx<span class="dot">.</span></a>
-  <nav>
+  <a class="logo" href="#top">ctx<span class="dot">.</span></a>
+  <nav id="nav-links">
+    <a href="#problem">Problem</a>
     <a href="#demo">Demo</a>
     <a href="#how">How it works</a>
     <a href="#commands">Commands</a>
     <a href="#install">Install</a>
+    <a href="#faq">FAQ</a>
     <a class="github" href="https://github.com/Idrisanu/ctx">GitHub →</a>
   </nav>
 </header>
 
-<main>
+<main id="top">
 <section class="hero">
+  <div class="badges reveal">
+    <span>v0.1.1</span><span>MIT</span><span>Local-first</span><span>No cloud · No telemetry</span>
+  </div>
   <h1>Your AI shouldn't forget<br>just because you changed the tool.</h1>
-  <p class="sub">CTX is an open-source, local-first CLI that preserves project state,
-  AI context, decisions, and environment — so you can move between AI agents,
-  sessions, and machines without losing where you left off.</p>
+  <p class="sub">CTX is an open-source CLI that preserves project state, AI context,
+  decisions, and environment — so development survives token limits, crashes,
+  tool switches, and machine moves.</p>
   <div class="cta">
+    <a class="btn-primary" href="#install">Get started</a>
+    <a class="btn-ghost" href="#demo">See it work ↓</a>
+  </div>
+  <div class="cta install-line">
     <code id="quick-install">curl -fsSL https://raw.githubusercontent.com/Idrisanu/ctx/main/install.sh | sh</code>
     <button data-copy="quick-install">Copy</button>
-    <a class="github-btn" href="https://github.com/Idrisanu/ctx">★ Star on GitHub</a>
+  </div>
+</section>
+
+<section id="problem">
+  <h2 class="reveal">Every session starts from zero. It shouldn't.</h2>
+  <div class="cards">
+    <div class="card reveal">
+      <h3>🔄 Re-explaining everything</h3>
+      <p>New session, new agent, same project — and you're pasting architecture,
+      constraints, and decisions back in from memory. Tokens burned on context
+      you already paid for once.</p>
+    </div>
+    <div class="card reveal">
+      <h3>⏱ Token-limit roulette</h3>
+      <p>Mid-milestone, the model stops. What it knew — the plan, the half-written
+      code's intent, the next step — evaporates with the session.</p>
+    </div>
+    <div class="card reveal">
+      <h3>🧠 Switching tools = amnesia</h3>
+      <p>Codex did the backend, now Gemini does the frontend — but Gemini never
+      met your project. Each tool keeps its understanding locked inside itself.</p>
+    </div>
+  </div>
+  <div class="diagram reveal">
+    <div class="dia-col bad">
+      <p class="dia-title">Without CTX</p>
+      <p>You → Agent → <em>context trapped in the session</em> → limit / switch → start over</p>
+    </div>
+    <div class="dia-col good">
+      <p class="dia-title">With CTX</p>
+      <p>You → <strong>CTX canonical state</strong> → any agent → limit / switch → continue</p>
+    </div>
   </div>
 </section>
 
 <section id="demo">
-  <h2>The token-limit scenario, live</h2>
-  <p>You built half your app in one agent. It hits its limit. Watch what happens next:</p>
-  <div class="terminal">
+  <h2 class="reveal">The token-limit scenario, live</h2>
+  <p class="reveal">An agent builds for an hour. Its quota dies mid-milestone.
+  A different agent picks up in the same folder:</p>
+  <div class="terminal reveal">
     <div class="term-bar"><span></span><span></span><span></span></div>
     <pre id="term-body"></pre>
     <button id="replay">↻ Replay demo</button>
@@ -43,49 +88,55 @@
 </section>
 
 <section id="how">
-  <h2>How it knows where the AI stopped</h2>
+  <h2 class="reveal">How it knows where the AI stopped</h2>
   <div class="cards">
-    <div class="card">
+    <div class="card reveal">
       <h3>A · Cooperative note</h3>
       <p>The agent maintains <code>.ctx/handoffs/current.md</code> — goal, completed,
       current work, last commands, next step. Works with any tool that reads
       instruction files. Zero per-agent code.</p>
     </div>
-    <div class="card">
+    <div class="card reveal">
       <h3>B · Session ingestion</h3>
       <p><code>ctx ingest</code> / <code>ctx monitor</code> read Claude Code transcripts,
       the OpenCode session store, and Gemini CLI chats: prompts, commands run,
       files touched, errors, token usage. Summaries only — transcripts never stored.</p>
     </div>
-    <div class="card">
+    <div class="card reveal">
       <h3>C · Reconstruction</h3>
       <p>Git state, auto-checkpoints on every commit, environment detection.
       Always works, even with tools that keep no transcript. Files exact, intent honest.</p>
     </div>
   </div>
-  <p class="note"><code>ctx resume</code> merges all three and labels which produced what.
+  <p class="note reveal"><code>ctx resume</code> merges all three and labels which produced what.
   It never claims data it doesn't have.</p>
+  <div class="position reveal">
+    <p><strong>Git</strong> stores the history of your code.
+    <strong>CTX</strong> stores the history and state of your AI-assisted development.
+    It doesn't replace your agent, your git history, or your notes app.</p>
+  </div>
 </section>
 
 <section id="commands">
-  <h2>One loop to learn</h2>
+  <h2 class="reveal">One loop to learn</h2>
   <div class="cmdgrid">
-    <div><code>ctx init --agent gemini</code><span>One-time setup: .ctx/, git hook, agent instruction</span></div>
-    <div><code>ctx status</code><span>Where things stand — state, checkpoint age, conflicts</span></div>
-    <div><code>ctx monitor --once</code><span>Pull the latest AI session into .ctx</span></div>
-    <div><code>ctx resume</code><span>Handoff file for the next agent to read</span></div>
-    <div><code>ctx switch &lt;agent&gt;</code><span>Checkpoint + archive note + render, in one step</span></div>
-    <div><code>ctx verify</code><span>Did the new agent follow the handoff?</span></div>
-    <div><code>ctx decide "..." --reason "..."</code><span>Record decisions; contradictions get flagged</span></div>
-    <div><code>ctx commit -m "..."</code><span>Commit WIP, skipping secrets, with safety guards</span></div>
-    <div><code>ctx doctor</code><span>Environment check for a new machine</span></div>
+    <div class="reveal"><code>ctx init --agent gemini</code><span>One-time setup: .ctx/, git hook, agent instruction</span></div>
+    <div class="reveal"><code>ctx status</code><span>Where things stand — state, checkpoint age, conflicts</span></div>
+    <div class="reveal"><code>ctx monitor --once</code><span>Pull the latest AI session into .ctx</span></div>
+    <div class="reveal"><code>ctx resume</code><span>Handoff file for the next agent to read</span></div>
+    <div class="reveal"><code>ctx switch &lt;agent&gt;</code><span>Checkpoint + archive note + render, in one step</span></div>
+    <div class="reveal"><code>ctx verify</code><span>Did the new agent follow the handoff?</span></div>
+    <div class="reveal"><code>ctx decide "..." --reason "..."</code><span>Record decisions; contradictions get flagged</span></div>
+    <div class="reveal"><code>ctx commit -m "..."</code><span>Commit WIP, skipping secrets, with safety guards</span></div>
+    <div class="reveal"><code>ctx doctor</code><span>Environment check for a new machine</span></div>
   </div>
-  <p class="note">Full reference: <code>ctx --help</code> documents every command and flag.</p>
+  <p class="note reveal">Full reference: <code>ctx --help</code> documents every command and flag.</p>
 </section>
 
 <section id="agents">
-  <h2>Agent-agnostic by design</h2>
-  <table>
+  <h2 class="reveal">Agent-agnostic by design</h2>
+  <p class="reveal">New tools slot in as readers + output flavors. The core never hard-codes a vendor.</p>
+  <table class="reveal">
     <tr><th>Agent</th><th>Note via</th><th>Transcript</th><th>Handoff</th></tr>
     <tr><td>Claude Code</td><td>CLAUDE.md</td><td>✓ JSONL</td><td><code>--agent claude</code></td></tr>
     <tr><td>OpenCode</td><td>AGENTS.md</td><td>✓ SQLite</td><td><code>--agent opencode</code></td></tr>
@@ -97,14 +148,14 @@
 </section>
 
 <section id="install">
-  <h2>Install</h2>
-  <div class="tabs">
+  <h2 class="reveal">Install in a minute</h2>
+  <div class="tabs reveal">
     <button data-tab="linux" class="active">Linux</button>
     <button data-tab="mac">macOS</button>
     <button data-tab="win">Windows</button>
     <button data-tab="src">From source</button>
   </div>
-  <div class="tabbody">
+  <div class="tabbody reveal">
     <pre id="install-linux">curl -fsSL https://raw.githubusercontent.com/Idrisanu/ctx/main/install.sh | sh</pre>
     <pre id="install-mac" hidden>curl -fsSL https://raw.githubusercontent.com/Idrisanu/ctx/main/install.sh | sh
 # first run only (unsigned binary):
@@ -115,12 +166,65 @@ cd ctx
 cargo install --path crates/cli</pre>
     <button data-copy-current>Copy</button>
   </div>
-  <p class="note">Binaries: Linux x86_64 · macOS ARM + Intel · Windows x86_64 — on every release.</p>
+  <p class="note reveal">Binaries: Linux x86_64 · macOS ARM + Intel · Windows x86_64 — on every release.</p>
+</section>
+
+<section id="faq">
+  <h2 class="reveal">Questions developers ask</h2>
+  <div class="faq reveal">
+    <details open>
+      <summary>Does CTX replace git?</summary>
+      <p>No. Git owns code history — commits, branches, diffs. CTX owns everything
+      around it: what the AI was doing, what it decided, what's unfinished, and what
+      the next agent needs. They complement each other; every git commit becomes a
+      CTX checkpoint automatically.</p>
+    </details>
+    <details>
+      <summary>Does my code leave my machine?</summary>
+      <p>No. CTX is local-first and offline-capable: no account, no telemetry, no cloud.
+      Ingestion stores short summaries, never raw transcripts. <code>ctx doctor</code>
+      reports environment variable <em>names</em>, never values.</p>
+    </details>
+    <details>
+      <summary>What if my agent doesn't cooperate with the note?</summary>
+      <p>You still get git state, checkpoints, and — for Claude Code, OpenCode, and
+      Gemini CLI — transcript ingestion, which needs no cooperation at all. The note
+      is the best channel, not the only one, and <code>ctx resume</code> tells you
+      which layers it used.</p>
+    </details>
+    <details>
+      <summary>How exact is the handoff after a token limit?</summary>
+      <p>Boundary-accurate: goal, what's done, the uncommitted diff (the literal
+      half-written code), last commands, errors, and next step. It can't replay
+      keystrokes — but the next agent starts at the frontier, not from zero.</p>
+    </details>
+    <details>
+      <summary>Do I have to run ctx commands constantly?</summary>
+      <p>No. <code>ctx init</code> once per project, commit normally, and CTX observes.
+      <code>ctx resume</code> / <code>ctx switch</code> are the only commands you touch
+      when changing tools. The design target is zero mandatory commands per session.</p>
+    </details>
+    <details>
+      <summary>Windows / macOS / Linux?</summary>
+      <p>All three, with prebuilt binaries on every release. The <code>.ctx</code>
+      directory uses relative paths only, so it moves between machines cleanly.</p>
+    </details>
+  </div>
+</section>
+
+<section class="cta-band reveal">
+  <h2>Stop re-explaining your project.</h2>
+  <div class="cta">
+    <a class="btn-primary" href="#install">Install CTX</a>
+    <a class="github-btn" href="https://github.com/Idrisanu/ctx">★ Star on GitHub</a>
+  </div>
 </section>
 </main>
 
 <footer>
-  <p>CTX is MIT-licensed. <a href="https://github.com/Idrisanu/ctx">github.com/Idrisanu/ctx</a></p>
+  <p>CTX is MIT-licensed. <a href="https://github.com/Idrisanu/ctx">github.com/Idrisanu/ctx</a> ·
+  <a href="https://github.com/Idrisanu/ctx/blob/main/README.md">Docs</a> ·
+  <a href="https://github.com/Idrisanu/ctx/blob/main/CONTRIBUTING.md">Contributing</a></p>
   <p>No accounts. No cloud. No telemetry. Your context stays yours.</p>
 </footer>
 
