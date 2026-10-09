@@ -3,13 +3,51 @@ use ctx_core::ProjectContext;
 const NOTE_BLOCK_START: &str = "<!-- CTX:START -->";
 const NOTE_BLOCK_END: &str = "<!-- CTX:END -->";
 
-pub(crate) fn inject_cooperative_note(root: &std::path::Path) {
+/// Canonical instruction file per agent. `None` means AGENTS.md
+/// already covers it (codex, opencode). Never renames project files —
+/// these are only ever written, marker-scoped and idempotent.
+pub(crate) fn agent_instruction_file(agent: &str) -> Option<&'static str> {
+    match agent {
+        "claude" | "claude-code" => Some("CLAUDE.md"),
+        "gemini" | "gemini-cli" => Some("GEMINI.md"),
+        "copilot" | "vscode" => Some(".github/copilot-instructions.md"),
+        "codex" | "opencode" | "generic" => None,
+        _ => None,
+    }
+}
+
+/// Names `ctx init --agent` accepts (adapters minus generic, which is
+/// an output flavor, not a tool).
+pub(crate) fn init_agent_names() -> Vec<&'static str> {
+    vec![
+        "claude",
+        "claude-code",
+        "gemini",
+        "gemini-cli",
+        "codex",
+        "copilot",
+        "vscode",
+        "opencode",
+    ]
+}
+
+pub(crate) fn inject_cooperative_note(root: &std::path::Path, extra_files: &[String]) {
     // Always write AGENTS.md (canonical default); also honor the agent's
-    // own file when the project already uses it. Never rename files.
+    // own file when the project already uses it or was declared with
+    // --agent. Never rename files.
     let mut targets = vec![root.join("AGENTS.md")];
     for name in ["CLAUDE.md", "GEMINI.md"] {
         let p = root.join(name);
         if p.exists() {
+            targets.push(p);
+        }
+    }
+    for extra in extra_files {
+        let p = root.join(extra);
+        if !targets.contains(&p) {
+            if let Some(parent) = p.parent() {
+                let _ = std::fs::create_dir_all(parent);
+            }
             targets.push(p);
         }
     }

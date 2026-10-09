@@ -124,6 +124,8 @@ impl OpenCodeReader {
             first_user_message: first_user,
             last_user_message: last_user,
             last_assistant_excerpt: last_assistant,
+            progress: None,
+            tokens_total: None,
             errors,
             files_touched: dedup(files),
             commands,

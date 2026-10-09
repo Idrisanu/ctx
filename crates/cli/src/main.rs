@@ -17,6 +17,11 @@ enum Commands {
         /// Run git init without asking when this folder is not a repo yet
         #[arg(long)]
         yes: bool,
+        /// Declare your agent(s), comma-separated: claude, gemini, codex,
+        /// copilot, opencode. Writes the note into their instruction file
+        /// and makes bare `ctx resume` default to it.
+        #[arg(long)]
+        agent: Option<String>,
     },
     /// Show project state, checkpoint age, note freshness, conflicts
     Status,
@@ -145,7 +150,7 @@ pub(crate) fn open_ctx() -> Result<(CtxDir, PathBuf)> {
 fn main() -> Result<()> {
     let cli = Cli::parse();
     match cli.command {
-        Commands::Init { yes } => cmd_init(yes),
+        Commands::Init { yes, agent } => cmd_init(yes, agent),
         Commands::Status => cmd_status(),
         Commands::Doctor => cmd_doctor(),
         Commands::History => cmd_history(),

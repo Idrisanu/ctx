@@ -144,6 +144,8 @@ fn parse(path: &Path, project_dir: &Path, updated: i64) -> Option<SessionInfo> {
         first_user_message: first_user,
         last_user_message: last_user,
         last_assistant_excerpt: last_assistant,
+        progress: None,
+        tokens_total: None,
         errors,
         files_touched: dedup(files),
         commands,

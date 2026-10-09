@@ -1,15 +1,42 @@
 use super::{detect_project_name, open_ctx, project_root};
-use crate::note::{apply_note, inject_cooperative_note};
+use crate::note::{agent_instruction_file, apply_note, init_agent_names, inject_cooperative_note};
 use anyhow::Result;
 use ctx_core::{Checkpoint, Config, EnvironmentState, ProjectContext};
 use ctx_storage::CtxDir;
 use std::path::PathBuf;
 
-pub(crate) fn cmd_init(yes: bool) -> Result<()> {
+pub(crate) fn cmd_init(yes: bool, agent: Option<String>) -> Result<()> {
     let root = project_root();
     let ctx = CtxDir::at(&root);
     let already = ctx.exists();
     ctx.init()?;
+
+    // Declared agents: validate, resolve their canonical files.
+    let mut extra_files: Vec<String> = Vec::new();
+    let mut primary_agent: Option<String> = None;
+    if let Some(list) = agent.as_deref() {
+        for name in list
+            .split(',')
+            .map(|s| s.trim().to_lowercase())
+            .filter(|s| !s.is_empty())
+        {
+            if !init_agent_names().contains(&name.as_str()) {
+                anyhow::bail!(
+                    "unknown agent '{}' (valid: {})",
+                    name,
+                    init_agent_names().join(", ")
+                );
+            }
+            if primary_agent.is_none() {
+                primary_agent = Some(name.clone());
+            }
+            if let Some(file) = agent_instruction_file(&name) {
+                if !extra_files.contains(&file.to_string()) {
+                    extra_files.push(file.to_string());
+                }
+            }
+        }
+    }
 
     // --- git setup before we probe state ---
     let git_installed = ctx_git::git_available();
@@ -75,19 +102,24 @@ pub(crate) fn cmd_init(yes: bool) -> Result<()> {
     }
     state.files_changed = git.dirty_files.clone();
 
-    let config = if already && ctx.config_path().exists() {
+    let mut config = if already && ctx.config_path().exists() {
         ctx.load_config().unwrap_or(Config {
             project_name: state.project.clone(),
             checkpoint_counter: 0,
             created_at: Some(chrono_now()),
+            primary_agent: None,
         })
     } else {
         Config {
             project_name: state.project.clone(),
             checkpoint_counter: 0,
             created_at: Some(chrono_now()),
+            primary_agent: None,
         }
     };
+    if primary_agent.is_some() {
+        config.primary_agent = primary_agent;
+    }
     ctx.save_config(&config)?;
     ctx.save_state(&state)?;
     if !ctx.checkpoints_path().exists() {
@@ -118,7 +150,7 @@ pub(crate) fn cmd_init(yes: bool) -> Result<()> {
     println!("Instruction files found: {}", docs.instructions.len());
     println!("Runtimes: {:?}", state.environment.runtimes);
 
-    inject_cooperative_note(&root);
+    inject_cooperative_note(&root, &extra_files);
     install_git_hook(&root);
     Ok(())
 }

@@ -131,6 +131,7 @@ mod tests {
             project_name: "demo".into(),
             checkpoint_counter: 3,
             created_at: None,
+            primary_agent: None,
         };
         ctx.save_config(&cfg).unwrap();
         let loaded = ctx.load_config().unwrap();

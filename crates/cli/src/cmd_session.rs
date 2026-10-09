@@ -91,7 +91,8 @@ pub(crate) fn cmd_resume(agent: Option<String>) -> Result<()> {
     let mut state = ctx.load_state()?;
     apply_note(&mut state, &root);
     let git = ctx_git::info(&root);
-    let agent_name = agent.as_deref().unwrap_or("generic");
+    let primary = ctx.load_config().ok().and_then(|c| c.primary_agent);
+    let agent_name = agent.as_deref().or(primary.as_deref()).unwrap_or("generic");
     let adapter = ctx_adapters::get(agent_name).ok_or_else(|| {
         anyhow::anyhow!(
             "unknown agent '{}' (available: {})",
@@ -153,6 +154,12 @@ pub(crate) fn cmd_resume(agent: Option<String>) -> Result<()> {
         }
         if let Some(a) = &ing.last_assistant_excerpt {
             rendered.push_str(&format!("Last assistant message: {}\n", a));
+        }
+        if let Some(p) = &ing.progress {
+            rendered.push_str(&format!("Latest progress report: {}\n", p));
+        }
+        if let Some(t) = ing.tokens_total {
+            rendered.push_str(&format!("Session tokens used: ~{}\n", t));
         }
         if !ing.errors.is_empty() {
             rendered.push_str("Errors:\n");
@@ -427,6 +434,8 @@ pub(crate) fn merge_session(
         goal: compressed.goal.clone(),
         last_user_message: compressed.last_user_message.clone(),
         last_assistant_excerpt: compressed.last_assistant_excerpt.clone(),
+        progress: compressed.progress.clone(),
+        tokens_total: compressed.tokens_total,
         errors: compressed.errors.clone(),
         files_touched: compressed.files_touched.clone(),
         commands: compressed.commands.clone(),

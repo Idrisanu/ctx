@@ -147,6 +147,10 @@ pub mod model {
             pub goal: Option<String>,
             pub last_user_message: Option<String>,
             pub last_assistant_excerpt: Option<String>,
+            #[serde(default)]
+            pub progress: Option<String>,
+            #[serde(default)]
+            pub tokens_total: Option<u64>,
             pub errors: Vec<String>,
             pub files_touched: Vec<String>,
             pub commands: Vec<String>,
@@ -163,6 +167,10 @@ pub mod model {
         pub checkpoint_counter: u64,
         #[serde(default)]
         pub created_at: Option<String>,
+        /// Agent declared at init (`ctx init --agent X`). Bare `ctx resume`
+        /// defaults to this flavor instead of generic.
+        #[serde(default)]
+        pub primary_agent: Option<String>,
     }
 
     #[derive(Debug, Clone, Serialize, Deserialize)]

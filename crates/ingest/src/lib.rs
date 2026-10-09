@@ -4,6 +4,7 @@ use std::path::{Path, PathBuf};
 
 pub mod agent;
 pub mod claude;
+pub mod gemini;
 pub mod opencode;
 
 pub use agent::SessionReader;
@@ -19,6 +20,13 @@ pub struct SessionInfo {
     pub first_user_message: Option<String>,
     pub last_user_message: Option<String>,
     pub last_assistant_excerpt: Option<String>,
+    /// Latest progress summary, when the agent reports one
+    /// (e.g. Gemini update_topic). None when absent.
+    #[serde(default)]
+    pub progress: Option<String>,
+    /// Summed message token totals, when the store reports them.
+    #[serde(default)]
+    pub tokens_total: Option<u64>,
     pub errors: Vec<String>,
     pub files_touched: Vec<String>,
     pub commands: Vec<String>,
@@ -31,6 +39,10 @@ pub struct CompressedSession {
     pub goal: Option<String>,
     pub last_user_message: Option<String>,
     pub last_assistant_excerpt: Option<String>,
+    #[serde(default)]
+    pub progress: Option<String>,
+    #[serde(default)]
+    pub tokens_total: Option<u64>,
     pub errors: Vec<String>,
     pub files_touched: Vec<String>,
     pub commands: Vec<String>,
@@ -42,6 +54,7 @@ pub fn registry() -> Vec<Box<dyn SessionReader>> {
     vec![
         Box::new(claude::ClaudeCodeReader),
         Box::new(opencode::OpenCodeReader),
+        Box::new(gemini::GeminiReader),
     ]
 }
 
@@ -68,6 +81,8 @@ pub fn compress(s: &SessionInfo) -> CompressedSession {
         goal: s.first_user_message.clone(),
         last_user_message: s.last_user_message.clone(),
         last_assistant_excerpt: s.last_assistant_excerpt.clone(),
+        progress: s.progress.clone(),
+        tokens_total: s.tokens_total,
         errors: s.errors.iter().take(5).cloned().collect(),
         files_touched: s.files_touched.iter().take(20).cloned().collect(),
         commands: s.commands.iter().take(10).cloned().collect(),
