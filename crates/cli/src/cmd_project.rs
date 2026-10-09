@@ -388,6 +388,7 @@ pub(crate) fn cmd_inspect(what: &str) -> Result<()> {
 
 pub(crate) fn cmd_checkpoint(summary: Option<String>) -> Result<()> {
     let (ctx, root) = open_ctx()?;
+    let _guard = ctx.lock()?;
     let mut config = ctx.load_config()?;
     let git = ctx_git::info(&root);
     let state = ctx.load_state()?;
@@ -457,6 +458,7 @@ pub(crate) fn cmd_checkpoint_auto() -> Result<()> {
     let Ok((ctx, root)) = open_ctx() else {
         return Ok(());
     };
+    let _guard = ctx.lock().ok();
     let mut config = match ctx.load_config() {
         Ok(c) => c,
         Err(_) => return Ok(()),

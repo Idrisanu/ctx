@@ -73,7 +73,7 @@ pub(crate) fn inject_note_file(path: &std::path::Path) {
     } else {
         format!("{}\n\n{}", existing.trim_end(), block)
     };
-    if let Err(e) = std::fs::write(path, updated) {
+    if let Err(e) = ctx_storage::atomic_write(path, updated.as_bytes()) {
         eprintln!("warning: could not update {}: {}", path.display(), e);
     } else {
         println!(

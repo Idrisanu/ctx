@@ -134,7 +134,9 @@ pub(crate) fn cmd_switch(agent: String) -> Result<()> {
             .root
             .join("handoffs")
             .join(format!("{}-{}.md", outgoing, stamp));
-        std::fs::copy(&current, &archived)?;
+        let tmp_archived = archived.with_extension("md.tmp");
+        std::fs::copy(&current, &tmp_archived)?;
+        std::fs::rename(&tmp_archived, &archived)?;
         println!("Archived outgoing note → {}", archived.display());
     }
 
@@ -277,7 +279,7 @@ fn render_handoff_md(
     let dir = ctx.root.join("handoffs");
     std::fs::create_dir_all(&dir)?;
     let path = dir.join(format!("{}.md", adapter.name()));
-    std::fs::write(&path, &rendered)?;
+    ctx_storage::atomic_write(&path, rendered.as_bytes())?;
     Ok((adapter.name().to_string(), path))
 }
 
@@ -380,7 +382,6 @@ fn print_diff(cps: &[ctx_core::Checkpoint], git: &ctx_git::GitInfo) {
 
 pub(crate) fn cmd_ingest(from: Option<String>) -> Result<()> {
     let (ctx, root) = open_ctx()?;
-    let mut state = ctx.load_state()?;
 
     let session = match &from {
         Some(path) => parse_generic_jsonl(std::path::Path::new(path), &root),
@@ -392,7 +393,7 @@ pub(crate) fn cmd_ingest(from: Option<String>) -> Result<()> {
         return Ok(());
     };
 
-    if !merge_session(&ctx, &mut state, &session)? {
+    if !merge_session(&ctx, &session)? {
         println!("Already up to date with this session.");
         return Ok(());
     }
@@ -463,11 +464,9 @@ pub(crate) fn parse_generic_jsonl(
     })
 }
 
-pub(crate) fn merge_session(
-    ctx: &CtxDir,
-    state: &mut ProjectContext,
-    session: &ctx_ingest::SessionInfo,
-) -> Result<bool> {
+pub(crate) fn merge_session(ctx: &CtxDir, session: &ctx_ingest::SessionInfo) -> Result<bool> {
+    let _guard = ctx.lock()?;
+    let mut state = ctx.load_state()?;
     // skip when we already have this exact session version
     if let Some(ing) = &state.ingested {
         if ing.source == ctx_ingest::compress(session).source
@@ -503,7 +502,7 @@ pub(crate) fn merge_session(
         source: compressed.source.clone(),
         updated_unix: session.updated_unix,
     });
-    ctx.save_state(state)?;
+    ctx.save_state(&state)?;
     Ok(true)
 }
 
@@ -515,14 +514,13 @@ pub(crate) fn cmd_monitor(interval: u64, once: bool) -> Result<()> {
         interval
     );
     loop {
-        let mut state = ctx.load_state()?;
         for reader in ctx_ingest::registry() {
             // cheap mtime probe first; skip full parse when nothing changed
             let mtime = match reader.latest_mtime(&root) {
                 Some(m) => m,
                 None => continue,
             };
-            let fresh = match &state.ingested {
+            let fresh = match ctx.load_state().ok().and_then(|s| s.ingested) {
                 Some(ing) => ing.updated_unix < mtime,
                 None => true,
             };
@@ -530,7 +528,7 @@ pub(crate) fn cmd_monitor(interval: u64, once: bool) -> Result<()> {
                 continue;
             }
             if let Some(session) = reader.latest(&root) {
-                if merge_session(&ctx, &mut state, &session)? {
+                if merge_session(&ctx, &session)? {
                     println!(
                         "ctx: updated from {} session {}",
                         session.agent, session.session_id

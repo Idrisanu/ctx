@@ -23,6 +23,7 @@ toml = "0.8"
 clap = { version = "4", features = ["derive"] }
 clap_complete = "4"
 anyhow = "1"
+fs2 = "0.4"
 thiserror = "2"
 chrono = { version = "0.4", features = ["serde"] }
 walkdir = "2"
