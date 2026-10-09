@@ -1,4 +1,5 @@
 use super::{open_ctx, project_root};
+use crate::cmd_project::cmd_checkpoint;
 use crate::note::apply_note;
 use anyhow::Result;
 use ctx_core::ProjectContext;
@@ -93,6 +94,77 @@ pub(crate) fn cmd_resume(agent: Option<String>) -> Result<()> {
     let git = ctx_git::info(&root);
     let primary = ctx.load_config().ok().and_then(|c| c.primary_agent);
     let agent_name = agent.as_deref().or(primary.as_deref()).unwrap_or("generic");
+    let (flavor, path) = render_handoff_md(&ctx, &root, &state, &git, agent_name)?;
+    println!("Context prepared for '{}':\n{}", flavor, path.display());
+    if !git.dirty_files.is_empty() {
+        println!(
+            "⚠ {} uncommitted file(s) — commit before switching so the handoff pins them (`ctx commit -m \"...\"` or git commit).",
+            git.dirty_files.len()
+        );
+    }
+    Ok(())
+}
+
+/// Switch agents in one ritual step: checkpoint current state, archive the
+/// outgoing note, point future bare `resume` at the new agent, render.
+pub(crate) fn cmd_switch(agent: String) -> Result<()> {
+    let agent = agent.trim().to_lowercase();
+    if ctx_adapters::get(&agent).is_none() {
+        anyhow::bail!(
+            "unknown agent '{}' (available: {})",
+            agent,
+            ctx_adapters::names().join(", ")
+        );
+    }
+    let (ctx, root) = open_ctx()?;
+    let outgoing = ctx
+        .load_config()
+        .ok()
+        .and_then(|c| c.primary_agent)
+        .unwrap_or_else(|| "note".to_string());
+
+    // 1. checkpoint where the outgoing agent stopped
+    cmd_checkpoint(Some(format!("switch {} → {}", outgoing, agent)))?;
+
+    // 2. archive the outgoing note so its framing survives the overwrite
+    let current = root.join(".ctx/handoffs/current.md");
+    if current.exists() {
+        let stamp = chrono::Utc::now().format("%Y%m%d-%H%M").to_string();
+        let archived = ctx
+            .root
+            .join("handoffs")
+            .join(format!("{}-{}.md", outgoing, stamp));
+        std::fs::copy(&current, &archived)?;
+        println!("Archived outgoing note → {}", archived.display());
+    }
+
+    // 3. future bare `ctx resume` speaks the new agent's flavor
+    if let Ok(mut config) = ctx.load_config() {
+        config.primary_agent = Some(agent.clone());
+        let _ = ctx.save_config(&config);
+    }
+
+    // 4. render the incoming handoff
+    let mut state = ctx.load_state()?;
+    apply_note(&mut state, &root);
+    let git = ctx_git::info(&root);
+    let (flavor, path) = render_handoff_md(&ctx, &root, &state, &git, &agent)?;
+    println!(
+        "Switched to '{}'. Hand it this file:\n{}",
+        flavor,
+        path.display()
+    );
+    Ok(())
+}
+
+/// Shared render used by `resume` and `switch`. Returns (flavor, path).
+fn render_handoff_md(
+    ctx: &CtxDir,
+    root: &std::path::Path,
+    state: &ProjectContext,
+    git: &ctx_git::GitInfo,
+    agent_name: &str,
+) -> Result<(String, std::path::PathBuf)> {
     let adapter = ctx_adapters::get(agent_name).ok_or_else(|| {
         anyhow::anyhow!(
             "unknown agent '{}' (available: {})",
@@ -100,10 +172,10 @@ pub(crate) fn cmd_resume(agent: Option<String>) -> Result<()> {
             ctx_adapters::names().join(", ")
         )
     })?;
-    let mut rendered = adapter.render(&state, &git);
+    let mut rendered = adapter.render(state, git);
     // Uncommitted frontier: the exact place mid-milestone work stopped.
     let cps = ctx.load_checkpoints().unwrap_or_default();
-    let (added, removed) = working_diff(&cps, &git);
+    let (added, removed) = working_diff(&cps, git);
     if !added.is_empty() || !removed.is_empty() {
         rendered.push_str("\n## Uncommitted changes since last checkpoint\n");
         match cps.last() {
@@ -126,7 +198,7 @@ pub(crate) fn cmd_resume(agent: Option<String>) -> Result<()> {
         rendered.push_str(" + AI cooperative note");
     }
     rendered.push('\n');
-    let conflicts = ctx_core::live_conflicts(&state);
+    let conflicts = ctx_core::live_conflicts(state);
     if !conflicts.is_empty() {
         rendered.push_str("\n## ⚠ Possible decision conflicts (resolve before continuing)\n");
         for d in &conflicts {
@@ -181,24 +253,24 @@ pub(crate) fn cmd_resume(agent: Option<String>) -> Result<()> {
         }
     }
     let cwd = project_root();
-    let merged = ctx_context::merged_instructions(&root, &cwd);
+    let merged = ctx_context::merged_instructions(root, &cwd);
     if !merged.is_empty() {
         rendered.push_str("\n## Project instructions\n\n");
         rendered.push_str(&merged);
     }
-    let discovered = ctx_context::discover(&root);
+    let discovered = ctx_context::discover(root);
     if !discovered.planning.is_empty() || !discovered.readmes.is_empty() {
         rendered.push_str("\n## Project documents (read these for full context)\n");
         for p in &discovered.planning {
             rendered.push_str(&format!(
                 "- {}\n",
-                p.strip_prefix(&root).unwrap_or(p).display()
+                p.strip_prefix(root).unwrap_or(p).display()
             ));
         }
         for p in &discovered.readmes {
             rendered.push_str(&format!(
                 "- {}\n",
-                p.strip_prefix(&root).unwrap_or(p).display()
+                p.strip_prefix(root).unwrap_or(p).display()
             ));
         }
     }
@@ -206,18 +278,7 @@ pub(crate) fn cmd_resume(agent: Option<String>) -> Result<()> {
     std::fs::create_dir_all(&dir)?;
     let path = dir.join(format!("{}.md", adapter.name()));
     std::fs::write(&path, &rendered)?;
-    println!(
-        "Context prepared for '{}':\n{}",
-        adapter.name(),
-        path.display()
-    );
-    if !git.dirty_files.is_empty() {
-        println!(
-            "⚠ {} uncommitted file(s) — commit before switching so the handoff pins them (`ctx commit -m \"...\"` or git commit).",
-            git.dirty_files.len()
-        );
-    }
-    Ok(())
+    Ok((adapter.name().to_string(), path))
 }
 
 pub(crate) fn cmd_recover() -> Result<()> {
@@ -483,4 +544,118 @@ pub(crate) fn cmd_monitor(interval: u64, once: bool) -> Result<()> {
         std::thread::sleep(std::time::Duration::from_secs(interval.max(5)));
     }
     Ok(())
+}
+
+/// Verify the new agent is following the handoff: compare stated intent
+/// (objective / current work / next action) against observed reality
+/// (working-tree changes, recent commits, note freshness).
+/// Reports evidence and flags — never claims semantic understanding.
+pub(crate) fn cmd_verify() -> Result<()> {
+    let (ctx, root) = open_ctx()?;
+    let mut state = ctx.load_state()?;
+    apply_note(&mut state, &root);
+    let git = ctx_git::info(&root);
+    let cps = ctx.load_checkpoints()?;
+    let (added, removed) = working_diff(&cps, &git);
+
+    println!("Stated intent:");
+    println!(
+        "  Objective: {}",
+        state.objective.as_deref().unwrap_or("(unset)")
+    );
+    if state.current_work.is_empty() {
+        println!("  Current work: (none)");
+    } else {
+        for c in &state.current_work {
+            println!("  Current work: {}", c);
+        }
+    }
+    println!(
+        "  Next action: {}",
+        state.next_action.as_deref().unwrap_or("(unset)")
+    );
+    println!();
+    println!("Observed reality:");
+    println!("  Branch: {}", git.branch.as_deref().unwrap_or("(none)"));
+    println!("  Last commit: {}", last_commit_summary(&root));
+    match cps.last() {
+        Some(cp) => println!("  Last checkpoint: {} ({})", cp.id, cp.created_at),
+        None => println!("  Last checkpoint: none"),
+    }
+    if added.is_empty() && removed.is_empty() {
+        println!("  Working tree: clean vs last checkpoint");
+    } else {
+        println!("  Changed since last checkpoint:");
+        for f in added.iter().chain(removed.iter()).take(15) {
+            println!("    {}", f);
+        }
+    }
+    println!();
+
+    let mut flags = 0;
+    let activity = !added.is_empty() || !removed.is_empty() || recent_commit(&root);
+    if !state.current_work.is_empty() && !activity {
+        println!("⚠ Current work is stated but nothing changed: no working-tree");
+        println!("  changes and no recent commits. The new agent may be stuck");
+        println!("  or working elsewhere — check in with it.");
+        flags += 1;
+    }
+    let note = root.join(".ctx/handoffs/current.md");
+    if note.exists() {
+        if let Ok(meta) = std::fs::metadata(&note) {
+            if let Ok(mtime) = meta.modified() {
+                let age_h = mtime.elapsed().unwrap_or_default().as_secs() / 3600;
+                if age_h > 24 {
+                    println!(
+                        "⚠ AI note is {}h old — handoff may describe finished work.",
+                        age_h
+                    );
+                    flags += 1;
+                }
+            }
+        }
+    } else {
+        println!("⚠ No AI note (.ctx/handoffs/current.md). Intent comes only from");
+        println!("  stored state — ask the agent to keep the note current.");
+        flags += 1;
+    }
+    if flags == 0 {
+        println!("✓ Intent and reality agree — no drift detected.");
+    }
+    Ok(())
+}
+
+fn last_commit_summary(root: &std::path::Path) -> String {
+    std::process::Command::new("git")
+        .args(["log", "-1", "--format=%h %s (%cr)"])
+        .current_dir(root)
+        .output()
+        .ok()
+        .filter(|o| o.status.success())
+        .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
+        .filter(|s| !s.is_empty())
+        .unwrap_or_else(|| "(no commits)".to_string())
+}
+
+/// True when HEAD moved in the last 6 hours.
+fn recent_commit(root: &std::path::Path) -> bool {
+    std::process::Command::new("git")
+        .args(["log", "-1", "--format=%ct"])
+        .current_dir(root)
+        .output()
+        .ok()
+        .filter(|o| o.status.success())
+        .and_then(|o| {
+            String::from_utf8_lossy(&o.stdout)
+                .trim()
+                .parse::<i64>()
+                .ok()
+        })
+        .and_then(|ct| {
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .ok()
+                .map(|now| now.as_secs() as i64 - ct < 6 * 3600)
+        })
+        .unwrap_or(false)
 }

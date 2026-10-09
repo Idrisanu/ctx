@@ -152,6 +152,12 @@ pub(crate) fn cmd_init(yes: bool, agent: Option<String>) -> Result<()> {
 
     inject_cooperative_note(&root, &extra_files);
     install_git_hook(&root);
+    println!();
+    println!("Next steps:");
+    println!("  1. Work with your AI agent — it keeps .ctx/handoffs/current.md fresh.");
+    println!("  2. Commit normally; every commit auto-checkpoints.");
+    println!("  3. When the session ends: ctx resume [--agent <name>]");
+    println!("  Tab-completion: ctx completion <bash|zsh|fish|powershell>");
     Ok(())
 }
 
@@ -476,10 +482,24 @@ pub(crate) fn cmd_checkpoint_auto() -> Result<()> {
     Ok(())
 }
 
+/// Dependendency/build dirs that almost never belong in a commit.
+/// If these are about to be staged, ctx stops and suggests .gitignore.
+const JUNK_DIRS: &[&str] = &[
+    "node_modules/",
+    ".next/",
+    "dist/",
+    "build/",
+    "target/",
+    "__pycache__/",
+    ".venv/",
+    "venv/",
+];
+
 /// Opt-in commit helper: stages everything git sees except `.ctxignore`
 /// matches, then commits. The post-commit hook auto-checkpoints.
-/// Never silent — always prints what was skipped and the result.
-pub(crate) fn cmd_commit(message: Option<String>) -> Result<()> {
+/// Loud by design: prints skips, refuses junk dirs and huge staging
+/// without confirmation, surfaces git's stderr. Never silent.
+pub(crate) fn cmd_commit(message: Option<String>, yes: bool) -> Result<()> {
     let (_ctx, root) = open_ctx()?;
     let Some(msg) = message else {
         anyhow::bail!("usage: ctx commit -m \"message\"");
@@ -504,24 +524,99 @@ pub(crate) fn cmd_commit(message: Option<String>) -> Result<()> {
         println!("Nothing to commit after .ctxignore filtering.");
         return Ok(());
     }
+    // Junk-dir guard: staging dependencies is almost always an accident
+    // (usually a missing .gitignore). Stop unless the user insists.
+    let junk: Vec<&&String> = included
+        .iter()
+        .filter(|f| JUNK_DIRS.iter().any(|d| f.starts_with(d)))
+        .collect();
+    if !junk.is_empty() {
+        println!("⚠ About to stage dependency/build output:");
+        for f in junk.iter().take(5) {
+            println!("  {}", f);
+        }
+        println!("  ({} file(s) under junk dirs)", junk.len());
+        println!("  Almost certainly you want a .gitignore with:");
+        for d in JUNK_DIRS
+            .iter()
+            .filter(|d| junk.iter().any(|f| f.starts_with(*d)))
+        {
+            println!("  {}", d);
+        }
+        if !yes && !prompt_yes("Stage them anyway? [y/N] ") {
+            println!("Aborted. Create .gitignore, then re-run.");
+            return Ok(());
+        }
+    }
     let add = std::process::Command::new("git")
         .arg("add")
         .arg("--")
         .args(&included)
         .current_dir(&root)
-        .status()?;
-    if !add.success() {
-        anyhow::bail!("git add failed");
+        .output()?;
+    if !add.status.success() {
+        anyhow::bail!(
+            "git add failed: {}",
+            String::from_utf8_lossy(&add.stderr).trim()
+        );
+    }
+    // Count what actually got staged (untracked dirs expand here).
+    let staged = std::process::Command::new("git")
+        .args(["diff", "--cached", "--name-only"])
+        .current_dir(&root)
+        .output()?;
+    let staged_count = String::from_utf8_lossy(&staged.stdout)
+        .lines()
+        .filter(|l| !l.trim().is_empty())
+        .count();
+    if staged_count > 100 && !yes {
+        let _ = std::process::Command::new("git")
+            .arg("reset")
+            .arg("-q")
+            .current_dir(&root)
+            .status();
+        println!(
+            "⚠ Aborted: {} files staged (limit 100). Unstaged, tree untouched.",
+            staged_count
+        );
+        println!("Re-run with --yes if this is really what you want.");
+        return Ok(());
     }
     let commit = std::process::Command::new("git")
         .arg("commit")
         .arg("-m")
         .arg(&msg)
         .current_dir(&root)
-        .status()?;
-    if !commit.success() {
-        anyhow::bail!("git commit failed (see git output above)");
+        .output()?;
+    if !commit.status.success() {
+        anyhow::bail!(
+            "git commit failed: {}",
+            String::from_utf8_lossy(&commit.stderr).trim()
+        );
     }
-    println!("Committed {} file(s): {}", included.len(), msg);
+    println!("Committed {} file(s): {}", staged_count, msg);
+    Ok(())
+}
+
+/// Print shell completions to stdout. Install with e.g.
+/// `ctx completion bash >> ~/.bash_completion` (bash),
+/// `ctx completion zsh > ~/.zfunc/_ctx` (zsh),
+/// `ctx completion fish > ~/.config/fish/completions/ctx.fish` (fish).
+pub(crate) fn cmd_completion(shell: &str) -> Result<()> {
+    use super::Cli;
+    use clap::CommandFactory;
+    use clap_complete::{generate, shells::*};
+    let mut cmd = Cli::command();
+    match shell.to_lowercase().as_str() {
+        "bash" => generate(Bash, &mut cmd, "ctx", &mut std::io::stdout()),
+        "zsh" => generate(Zsh, &mut cmd, "ctx", &mut std::io::stdout()),
+        "fish" => generate(Fish, &mut cmd, "ctx", &mut std::io::stdout()),
+        "powershell" | "ps" => generate(PowerShell, &mut cmd, "ctx", &mut std::io::stdout()),
+        "elvish" => generate(Elvish, &mut cmd, "ctx", &mut std::io::stdout()),
+        other => anyhow::bail!(
+            "unknown shell '{}' (bash|zsh|fish|powershell|elvish)",
+            other
+        ),
+    }
     Ok(())
 }

@@ -138,6 +138,22 @@ points at any JSONL transcript (the generic reader for tools without a
 built-in one).
 
 ```
+ctx switch <agent>
+```
+One ritual step for changing tools: checkpoints where the outgoing
+agent stopped, archives its note (`.ctx/handoffs/<agent>-<date>.md`),
+points future bare `ctx resume` at the new agent, and renders the
+incoming handoff.
+
+```
+ctx verify
+```
+Did the new agent follow the handoff? Compares stated intent
+(objective, current work, next action) against observed reality
+(working-tree changes, recent commits, note freshness) and flags drift.
+Reports evidence, never pretends semantic understanding.
+
+```
 ctx recover
 ```
 Reconstruct last known state after a crash or lost session: checkpoint,
@@ -149,11 +165,19 @@ ctx diff
 Working-tree changes since the last checkpoint (added vs resolved).
 
 ```
-ctx commit -m "message"
+ctx commit -m "message" [--yes]
 ```
 Commit work in progress while skipping `.ctxignore` matches (`.env`,
-`*.pem`, `secrets/`). Prints what it skipped. Explicit and loud —
+`*.pem`, `secrets/`). Stops for confirmation when staging is large
+(100+ files) or includes dependency dirs (`node_modules/`, …) — unless
+`--yes`. Surfaces git's real error output. Explicit and loud —
 ctx never auto-commits on its own.
+
+```
+ctx completion <shell>
+```
+Print shell completions (`bash|zsh|fish|powershell|elvish`) to stdout
+for piping into your shell's completion dir.
 
 ### State (optional, never required for correctness)
 

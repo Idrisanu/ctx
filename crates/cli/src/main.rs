@@ -53,6 +53,13 @@ enum Commands {
     },
     /// Reconstruct last known state after a crash or lost session
     Recover,
+    /// Check stated intent against observed reality (drift detection)
+    Verify,
+    /// Checkpoint, archive the outgoing note, and render for a new agent
+    Switch {
+        /// Agent to switch to: opencode, claude, gemini, codex, copilot, generic
+        agent: String,
+    },
     /// Show working-tree changes since the last checkpoint
     Diff,
     /// Add a task to the current work list
@@ -116,11 +123,19 @@ enum Commands {
         /// Commit message (required)
         #[arg(short, long)]
         message: Option<String>,
+        /// Skip the large-staging and junk-dir confirmations
+        #[arg(long)]
+        yes: bool,
     },
     /// Manage the git post-commit auto-checkpoint hook
     Hooks {
         #[command(subcommand)]
         action: HooksAction,
+    },
+    /// Print shell completions (bash|zsh|fish|powershell|elvish)
+    Completion {
+        /// Shell to generate completions for
+        shell: String,
     },
 }
 
@@ -159,6 +174,8 @@ fn main() -> Result<()> {
         Commands::Checkpoint { summary } => cmd_checkpoint(summary),
         Commands::Resume { agent } => cmd_resume(agent),
         Commands::Recover => cmd_recover(),
+        Commands::Verify => cmd_verify(),
+        Commands::Switch { agent } => cmd_switch(agent),
         Commands::Diff => cmd_diff(),
         Commands::Task { title } => cmd_task(title),
         Commands::Decide {
@@ -175,7 +192,8 @@ fn main() -> Result<()> {
         Commands::Agents => cmd_agents(),
         Commands::Monitor { interval, once } => cmd_monitor(interval, once),
         Commands::CheckpointAuto => cmd_checkpoint_auto(),
-        Commands::Commit { message } => cmd_commit(message),
+        Commands::Commit { message, yes } => cmd_commit(message, yes),
+        Commands::Completion { shell } => cmd_completion(&shell),
         Commands::Hooks { action } => match action {
             HooksAction::Install => {
                 let root = project_root();
@@ -202,10 +220,10 @@ pub(crate) fn detect_project_name(root: &std::path::Path) -> String {
         .unwrap_or_else(|| "project".into())
 }
 
-mod cmd_project;
-mod cmd_session;
-mod cmd_state;
-mod note;
+pub(crate) mod cmd_project;
+pub(crate) mod cmd_session;
+pub(crate) mod cmd_state;
+pub(crate) mod note;
 
 use cmd_project::*;
 use cmd_session::*;
