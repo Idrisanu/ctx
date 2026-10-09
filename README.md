@@ -1,73 +1,240 @@
-# CTX
+# CTX — Git for AI context
 
-Git for AI context. A local-first CLI that preserves project state, AI context,
-development decisions, and environment requirements so you can move between AI
-agents, sessions, and machines without losing your place.
+Your AI shouldn't forget just because you changed the tool.
 
-## The loop
+CTX is an open-source, local-first CLI that preserves project state, AI
+context, development decisions, and environment requirements — so you can
+move between AI agents, sessions, and machines without losing where you
+left off. Hit a token limit in Codex at 2am? Open the same folder in
+another tool, run `ctx resume`, and keep going.
 
 ```bash
-ctx init                  # once per project: .ctx/, git hook, agent note
-# ... work with any AI agent; every git commit auto-checkpoints ...
-ctx monitor --once        # pull the latest AI session into .ctx (or run `ctx monitor` live)
-ctx resume --agent gemini # hand off to the next agent
+# Agent 1 (e.g. Codex) does half the work, hits its limit…
+ctx init --agent codex
+# ...work happens, every git commit auto-checkpoints...
+
+# Agent 2 (e.g. Gemini) picks up exactly where it stopped:
+ctx resume
+# → goal, completed work, changed files, next step, project rules
+```
+
+No account. No cloud. No telemetry. Everything lives in `.ctx/` inside
+your project and travels with your repo.
+
+## How it works
+
+CTX keeps a **canonical project state** outside any single AI session and
+rebuilds it from three layers, best available wins:
+
+| Layer | Source | What it captures |
+|---|---|---|
+| **A — Cooperative note** | The agent maintains `.ctx/handoffs/current.md` (instructed via `AGENTS.md` / `GEMINI.md` / `CLAUDE.md`) | Goal, completed, current work, last commands, next action, blockers |
+| **B — Session ingestion** | `ctx ingest` / `ctx monitor` read Claude Code transcripts, the OpenCode session store, and Gemini CLI chats | Prompts, replies, commands run, files touched, errors, token usage |
+| **C — Reconstruction** | Git state, checkpoints, `ctx doctor` | Changed files, branch, commits, environment. Always works. |
+
+Every `ctx resume` labels which layers produced it, and never claims data
+it doesn't have. If the note is missing and no transcript exists, ctx says
+so instead of inventing context.
+
+## Install
+
+Requires Rust (1.85+). The binary has no runtime dependencies.
+
+```bash
+git clone https://github.com/Idrisanu/ctx
+cd ctx
+cargo install --path crates/cli
+ctx --help
+```
+
+After code changes, re-run `cargo install --path crates/cli` to refresh
+your local binary.
+
+## Quick start
+
+```bash
+cd your-project
+ctx init --agent gemini   # one time: .ctx/, git hook, agent instruction
+git add -A && git commit -m "init"
+
+# ...work with your AI agent...
+
+ctx status                # where things stand
+ctx monitor --once        # pull the latest AI session into .ctx
+ctx resume                # handoff file for the next agent
 ```
 
 ## Commands
 
-```
-ctx init [--yes]          Initialize CTX (offers git init, installs hook + agent note)
-ctx status                Show current project state
-ctx doctor                Check environment (runtimes, docker, env vars)
-ctx history               List checkpoints
-ctx checkpoint [summary]  Create a manual checkpoint
-ctx commit -m "msg"      Commit, skipping .ctxignore matches (hook auto-checkpoints)
-ctx handoff [--agent X]   Render a markdown handoff (claude|gemini|codex|copilot|opencode|generic)
-ctx inspect <what>        decisions | tasks | environment | agents
-ctx resume [--agent X]    Prepare agent context
-ctx recover               Reconstruct last known state
-ctx diff                  Context changes since last checkpoint
-ctx monitor [--interval N] [--once]  Keep .ctx fresh from live AI sessions
-ctx ingest [--from file]  Import the newest AI session for this project
-ctx agents                Show detected session sources on this machine
-ctx hooks install|status  Manage the git post-commit hook
-ctx objective <text>      Set current objective
-ctx task <title>          Add a task
-ctx decide <text>         Record a decision (--reason ...)
-ctx complete <item>       Mark work complete
-ctx next <action>         Set next action
-ctx instructions [path]   Show merged instruction hierarchy
-```
-
-## How ctx knows where the AI stopped
-
-Three layers, best available wins (and `ctx resume` says which it used):
-
-1. **Cooperative note** — `ctx init` teaches the agent (via AGENTS.md,
-   CLAUDE.md, GEMINI.md) to maintain `.ctx/handoffs/current.md` after
-   every milestone. Works with any agent that reads instruction files.
-2. **Session ingestion** — `ctx ingest` / `ctx monitor` read Claude Code
-   transcripts and the OpenCode session store (commands run, files
-   touched, failed exits, last messages). Summaries only — raw
-   transcripts are never persisted.
-3. **Reconstruction** — git state, checkpoints, `ctx doctor`. Always works.
-
-## A note on Copilot / VS Code
-
-VS Code keeps no readable Copilot transcript on disk, so there is no
-automatic session reader for it. For Copilot projects the cooperative
-note plus git state is the designed channel: keep
-`.ctx/handoffs/current.md` current (the agent does this when asked, per
-AGENTS.md) and `ctx resume` will carry it to the next agent.
-
-## Build
+### Setup
 
 ```
+ctx init [--yes] [--agent <name,...>]
+```
+One-time setup per project: creates `.ctx/`, installs a git post-commit
+hook (every commit becomes a checkpoint automatically), writes the
+cooperative-note instruction into your agent's file, and detects readable
+AI sessions. Offers to run `git init` if needed. `--agent gemini` writes
+to `GEMINI.md` (`claude` → `CLAUDE.md`, `copilot` → copilot instructions,
+`codex`/`opencode` → `AGENTS.md`) and makes bare `ctx resume` default to
+that agent. Re-running refreshes everything without losing state.
+
+```
+ctx agents
+```
+Show which AI session sources this machine can read (claude-code,
+opencode, gemini). Notes honestly when a tool keeps no transcript
+(Copilot/VS Code) and what to do instead.
+
+```
+ctx doctor
+```
+Environment check: git, Node/Python/Rust/Go, pnpm/npm, Docker, databases,
+and required-but-missing env vars (**names only — values never leave
+your machine**). Run this first on a new machine.
+
+```
+ctx hooks install|status
+```
+Manage the git post-commit auto-checkpoint hook (installed by `init`).
+
+### Daily use
+
+```
+ctx status
+```
+Project, objective, branch, changed-file count, checkpoint age, AI-note
+freshness (warns when stale), last ingested session, and any decision
+conflicts. Warns about uncommitted work before agent switches.
+
+```
+ctx resume [--agent <name>]
+```
+Build the handoff file (`.ctx/handoffs/<agent>.md`) for the next agent:
+goal, completed, current work, changed files, uncommitted frontier,
+recent commands, errors, decisions, project instructions, project-doc
+pointers, and provenance. Flavors: `generic`, `opencode`, `claude`,
+`gemini`, `codex`, `copilot`. Defaults to your `init --agent`, else
+generic. Warns when the tree is dirty.
+
+```
+ctx handoff [--agent <name>]
+```
+Print the current handoff to the terminal instead of writing a file.
+
+```
+ctx monitor [--interval N] [--once]
+```
+Poll live AI sessions and fold anything new into `.ctx/state.json`.
+Run it in the background while an agent works; `--once` for a single
+pass (useful in scripts). On token death, state is current to the last
+minutes, not the last commit.
+
+```
+ctx ingest [--from <transcript.jsonl>]
+```
+One-shot import of the newest AI session for this project. `--from`
+points at any JSONL transcript (the generic reader for tools without a
+built-in one).
+
+```
+ctx recover
+```
+Reconstruct last known state after a crash or lost session: checkpoint,
+task, changed files, next action.
+
+```
+ctx diff
+```
+Working-tree changes since the last checkpoint (added vs resolved).
+
+```
+ctx commit -m "message"
+```
+Commit work in progress while skipping `.ctxignore` matches (`.env`,
+`*.pem`, `secrets/`). Prints what it skipped. Explicit and loud —
+ctx never auto-commits on its own.
+
+### State (optional, never required for correctness)
+
+```
+ctx objective "<goal>"      Set the current objective
+ctx task "<title>"          Add a task
+ctx complete "<item>"       Mark work complete
+ctx next "<action>"         Set the single next action
+ctx decide "<text>" [--reason "..."] [--supersedes CTX-N]
+                            Record a lasting decision. Warns on possible
+                            contradictions with recorded decisions; history
+                            is kept, never deleted.
+ctx resolve <CTX-N>         Clear a decision's conflict flag after review
+ctx checkpoint ["summary"]  Record a manual checkpoint
+ctx history                 List checkpoints (newest last)
+ctx instructions [path]     List instruction files applying to a directory
+ctx inspect <what>          decisions | tasks | environment | agents
+```
+
+Manual commands exist for control. If your agent keeps its note and you
+commit normally, you may never need them.
+
+## The token-limit scenario
+
+1. `ctx init --agent gemini` in the project (once).
+2. Work. The agent maintains `.ctx/handoffs/current.md`; commits
+   auto-checkpoint; `ctx monitor` (optional) tracks the live session.
+3. Token limit hits mid-milestone.
+4. `ctx resume` (or `--agent <next-tool>`) → paste the handoff file into
+   the next agent as its first message.
+5. It continues from goal + completed + uncommitted frontier + next step.
+
+## Project documents
+
+`ctx resume` embeds your instruction files (`AGENTS.md` hierarchy, root
+→ deepest) in full, and points the next agent at your planning docs
+(`PRD.md`, `MVP.md`, `milestone-*.md`, `ROADMAP.md`, READMEs) by path —
+so it reads the authoritative text instead of a stale copy.
+
+## Agent support
+
+| Agent | Cooperative note | Transcript ingestion | Handoff flavor |
+|---|---|---|---|
+| Claude Code | `CLAUDE.md` | `~/.claude/projects/*.jsonl` | `claude` |
+| OpenCode | `AGENTS.md` | session SQLite store | `opencode` |
+| Gemini CLI | `GEMINI.md` | `~/.gemini/tmp/*/chats/*` | `gemini` |
+| Codex | `AGENTS.md` | planned | `codex` |
+| Copilot / VS Code | copilot instructions | none on disk — note + git is the design | `copilot` |
+| Anything else | `AGENTS.md` | `ctx ingest --from file.jsonl` | `generic` |
+
+New agents slot in as readers + flavors; the core never hard-codes a vendor.
+
+## Privacy
+
+- Local-first, offline-capable. No account, no telemetry, no cloud.
+- Ingestion stores summaries/excerpts only — raw transcripts are never
+  persisted into `.ctx/`.
+- Secrets are never copied: `.ctxignore` (`.env`, `*.pem`, `secrets/…`)
+  is honored by `ctx commit`; `ctx doctor` reports env var names, never values.
+
+## Build & develop
+
+```bash
 cargo build
-cargo test
-cargo install --path crates/cli
+cargo test          # 13+ unit tests, fixtures included
+cargo clippy --all  # must be zero warnings
+cargo fmt           # run before every commit
 ```
+
+Workspace crates: `cli`, `core` (pure domain logic), `storage` (`.ctx`
+I/O), `git`, `env`, `context` (instruction discovery), `adapters`
+(per-agent rendering), `ingest` (session readers).
+
+## Roadmap
+
+- `ctx switch --agent X` (checkpoint + archive + render in one step)
+- `ctx verify` (did the new agent follow the handoff?)
+- `ctx restore` semantics, `ctx why`
+- Prebuilt binaries + one-line install for Linux/macOS/Windows
+- Codex transcript reader
 
 ## License
 
-MIT
+MIT — see [LICENSE](LICENSE).
