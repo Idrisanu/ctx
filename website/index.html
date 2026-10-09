@@ -138,7 +138,7 @@
     <tr><td>Claude Code</td><td>CLAUDE.md</td><td>✓ JSONL</td><td><code>--agent claude</code></td></tr>
     <tr><td>OpenCode</td><td>AGENTS.md</td><td>✓ SQLite</td><td><code>--agent opencode</code></td></tr>
     <tr><td>Gemini CLI</td><td>GEMINI.md</td><td>✓ existing chats (free-tier access ended Jun 2026)</td><td><code>--agent gemini</code></td></tr>
-    <tr><td>Codex</td><td>AGENTS.md</td><td>planned</td><td><code>--agent codex</code></td></tr>
+    <tr><td>Codex</td><td>AGENTS.md</td><td>✓ rollout JSONL</td><td><code>--agent codex</code></td></tr>
     <tr><td>Copilot / VS Code</td><td>copilot instructions</td><td>none on disk — note + git</td><td><code>--agent copilot</code></td></tr>
     <tr><td>Anything else</td><td>AGENTS.md</td><td><code>ingest --from file.jsonl</code></td><td><code>generic</code></td></tr>
   </table>
@@ -164,7 +164,8 @@ cd ctx
 cargo install --path crates/cli</pre>
     <button data-copy-current>Copy</button>
   </div>
-  <p class="note reveal">Binaries: Linux x86_64 · macOS ARM + Intel · Windows x86_64 — on every release.</p>
+  <p class="note reveal">Binaries: Linux x86_64 · macOS ARM + Intel · Windows x86_64 — on every release.
+  Installers verify SHA256 checksums automatically.</p>
 </section>
 
 <section id="faq">
@@ -182,6 +183,12 @@ cargo install --path crates/cli</pre>
       <p>No. CTX is local-first and offline-capable: no account, no telemetry, no cloud.
       Ingestion stores short summaries, never raw transcripts. <code>ctx doctor</code>
       reports environment variable <em>names</em>, never values.</p>
+    </details>
+    <details>
+      <summary>How do I know the download is genuine?</summary>
+      <p>Every release publishes a <code>SHA256SUMS</code> file, and both installers
+      verify the download against it before installing — a mismatch aborts loudly.
+      Prefer zero trust? Build from source with <code>cargo install --path crates/cli</code>.</p>
     </details>
     <details>
       <summary>What if my agent doesn't cooperate with the note?</summary>

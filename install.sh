@@ -33,6 +33,22 @@ tmp="$(mktemp -d)"
 trap 'rm -rf "$tmp"' EXIT
 echo "downloading $url"
 curl -fsSL "$url" -o "$tmp/ctx.tar.gz"
+echo "verifying checksum"
+sums_url="${url%/*}/SHA256SUMS"
+curl -fsSL "$sums_url" -o "$tmp/SHA256SUMS"
+archive="ctx-$target.tar.gz"
+want="$(grep " $archive\$" "$tmp/SHA256SUMS" | awk '{print $1}')"
+if [ -z "$want" ]; then
+  echo "error: $archive not listed in SHA256SUMS" >&2; exit 1
+fi
+if command -v sha256sum >/dev/null 2>&1; then
+  echo "$want  $tmp/ctx.tar.gz" | sha256sum -c - >/dev/null
+elif command -v shasum >/dev/null 2>&1; then
+  echo "$want  $tmp/ctx.tar.gz" | shasum -a 256 -c - >/dev/null
+else
+  echo "error: need sha256sum or shasum to verify the download" >&2; exit 1
+fi
+echo "checksum ok"
 tar xzf "$tmp/ctx.tar.gz" -C "$tmp"
 mkdir -p "$BIN_DIR"
 mv "$tmp/ctx" "$BIN_DIR/ctx"
