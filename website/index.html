@@ -28,7 +28,7 @@
 <main id="top">
 <section class="hero">
   <div class="badges reveal">
-    <span>v0.1.1</span><span>MIT</span><span>Local-first</span><span>No cloud · No telemetry</span>
+    <span>MIT</span><span>Local-first</span><span>No cloud · No telemetry</span>
   </div>
   <h1>Your AI shouldn't forget<br>just because you changed the tool.</h1>
   <p class="sub">CTX is an open-source CLI that preserves project state, AI context,
@@ -37,10 +37,6 @@
   <div class="cta">
     <a class="btn-primary" href="#install">Get started</a>
     <a class="btn-ghost" href="#demo">See it work ↓</a>
-  </div>
-  <div class="cta install-line">
-    <code id="quick-install">curl -fsSL https://raw.githubusercontent.com/Idrisanu/ctx/main/install.sh | sh</code>
-    <button data-copy="quick-install">Copy</button>
   </div>
 </section>
 
@@ -136,7 +132,8 @@
 <section id="agents">
   <h2 class="reveal">Agent-agnostic by design</h2>
   <p class="reveal">New tools slot in as readers + output flavors. The core never hard-codes a vendor.</p>
-  <table class="reveal">
+  <div class="table-wrap reveal">
+  <table>
     <tr><th>Agent</th><th>Note via</th><th>Transcript</th><th>Handoff</th></tr>
     <tr><td>Claude Code</td><td>CLAUDE.md</td><td>✓ JSONL</td><td><code>--agent claude</code></td></tr>
     <tr><td>OpenCode</td><td>AGENTS.md</td><td>✓ SQLite</td><td><code>--agent opencode</code></td></tr>
@@ -145,6 +142,7 @@
     <tr><td>Copilot / VS Code</td><td>copilot instructions</td><td>none on disk — note + git</td><td><code>--agent copilot</code></td></tr>
     <tr><td>Anything else</td><td>AGENTS.md</td><td><code>ingest --from file.jsonl</code></td><td><code>generic</code></td></tr>
   </table>
+  </div>
 </section>
 
 <section id="install">
