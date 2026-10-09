@@ -13,11 +13,11 @@ left off. Hit a token limit in Codex at 2am? Open the same folder in
 another tool, run `ctx resume`, and keep going.
 
 ```bash
-# Agent 1 (e.g. Codex) does half the work, hits its limit…
-ctx init --agent codex
+# Agent 1 (e.g. Claude Code) does half the work, hits its limit…
+ctx init --agent claude-code
 # ...work happens, every git commit auto-checkpoints...
 
-# Agent 2 (e.g. Gemini) picks up exactly where it stopped:
+# Agent 2 (e.g. OpenCode) picks up from the same state:
 ctx resume
 # → goal, completed work, changed files, next step, project rules
 ```
@@ -297,8 +297,8 @@ so it reads the authoritative text instead of a stale copy.
 |---|---|---|---|
 | Claude Code | `CLAUDE.md` | `~/.claude/projects/*.jsonl` | `claude` |
 | OpenCode | `AGENTS.md` | session SQLite store | `opencode` |
-| Gemini CLI | `GEMINI.md` | `~/.gemini/tmp/*/chats/*` | `gemini` |
-| Codex | `AGENTS.md` | planned | `codex` |
+| Gemini CLI | `GEMINI.md` | `~/.gemini/tmp/*/chats/*` (existing transcripts; free-tier access ended June 2026) | `gemini` |
+| Codex | `AGENTS.md` | rollout JSONL via session SQLite | `codex` |
 | Copilot / VS Code | copilot instructions | none on disk — note + git is the design | `copilot` |
 | Anything else | `AGENTS.md` | `ctx ingest --from file.jsonl` | `generic` |
 
@@ -327,11 +327,22 @@ I/O), `git`, `env`, `context` (instruction discovery), `adapters`
 
 ## Roadmap
 
-- `ctx switch --agent X` (checkpoint + archive + render in one step)
-- `ctx verify` (did the new agent follow the handoff?)
-- `ctx restore` semantics, `ctx why`
-- Prebuilt binaries + one-line install for Linux/macOS/Windows
-- Codex transcript reader
+Planned:
+- `ctx restore` semantics (metadata-only vs real rollback)
+- `ctx why` (why is this file shaped this way?)
+- crates.io publish (`cargo install ctx`)
+
+Already shipped: `ctx switch`, `ctx verify`, prebuilt binaries +
+one-line install, Gemini/Claude/OpenCode readers, conflict detection.
+
+## Why not just use X?
+
+- **AI memory plugins** remember what you told them. CTX reconstructs
+  where the project stands — goal, frontier, next step — even when the
+  previous session left no note, from transcripts, git, and checkpoints.
+- **Copy-pasting between chats** works once. CTX makes it repeatable,
+  checkable (`ctx verify`), and portable across machines.
+- **Git alone** records what changed, never what was intended or what's next.
 
 ## License
 

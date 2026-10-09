@@ -4,6 +4,7 @@ use std::path::{Path, PathBuf};
 
 pub mod agent;
 pub mod claude;
+pub mod codex;
 pub mod gemini;
 pub mod opencode;
 
@@ -55,6 +56,7 @@ pub fn registry() -> Vec<Box<dyn SessionReader>> {
         Box::new(claude::ClaudeCodeReader),
         Box::new(opencode::OpenCodeReader),
         Box::new(gemini::GeminiReader),
+        Box::new(codex::CodexReader),
     ]
 }
 

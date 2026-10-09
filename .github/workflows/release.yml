@@ -50,3 +50,25 @@ jobs:
         with:
           files: ctx-${{ matrix.target }}.${{ matrix.ext }}
           generate_release_notes: true
+
+  checksums:
+    name: publish SHA256SUMS
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: download all assets
+        uses: robinraju/release-downloader@v1
+        with:
+          repository: ${{ github.repository }}
+          tag: ${{ github.ref_name }}
+          fileName: "ctx-*"
+          out-file-path: sums
+      - name: write SHA256SUMS
+        run: |
+          cd sums
+          sha256sum ctx-* > SHA256SUMS
+          cat SHA256SUMS
+      - name: upload
+        uses: softprops/action-gh-release@v2
+        with:
+          files: sums/SHA256SUMS

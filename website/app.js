@@ -1,18 +1,18 @@
 // Typed terminal demo: the token-limit scenario.
 document.body.classList.add("js");
 const SCRIPT = [
-  ["p", "$ ctx init --agent gemini"],
+  ["p", "$ ctx init --agent claude-code"],
   ["c", "Refreshed CTX in ./ctx-demo2/.ctx\nAGENTS.md + GEMINI.md updated with CTX note instructions.\ngit post-commit hook installed (auto-checkpoint)."],
   ["p", "$ # ...Gemini builds the landing page for an hour..."],
   ["p", "$ npm run build"],
   ["c", "✓ Compiled successfully\n✓ 3 static routes generated"],
-  ["p", "$ git add -A && git commit -m \"gemini: landing page + docs section\""],
-  ["c", "[master 9f3ac21] gemini: landing page + docs section"],
+  ["p", "$ git add -A && git commit -m \"claude: landing page + docs section\""],
+  ["c", "[master 9f3ac21] claude: landing page + docs section"],
   ["w", "⚠ API Error: You have exhausted your daily quota on this model."],
   ["p", "$ # tokens dead mid-milestone. New agent, same folder:"],
   ["p", "$ ctx resume"],
-  ["c", "Context prepared for 'gemini':\n./.ctx/handoffs/gemini.md"],
-  ["p", "$ cat .ctx/handoffs/gemini.md"],
+  ["c", "Context prepared for 'claude':\n./.ctx/handoffs/claude.md"],
+  ["p", "$ cat .ctx/handoffs/claude.md"],
   ["c", "# Project Context (from CTX)\n\n**Objective:** Ship the CTX landing page\n\n## Completed\n- Landing scaffold + hero\n- Docs section + footer\n\n## Current work\n- Contact form (route done, validation half-written)\n\n## Next action\nFinish contact-form validation in Contact.tsx\n\n---\nSources: project/git state + ingested AI session + AI cooperative note"],
   ["p", "$ # paste into the next agent → it continues at Contact.tsx. No re-explaining."],
 ];
