@@ -38,8 +38,28 @@ so instead of inventing context.
 
 ## Install
 
-Requires Rust (1.85+). The binary has no runtime dependencies.
+No Rust needed — download a prebuilt binary (Linux, macOS Intel/ARM, Windows):
 
+**Linux / macOS:**
+```bash
+curl -fsSL https://raw.githubusercontent.com/Idrisanu/ctx/main/install.sh | sh
+```
+
+**Windows (PowerShell):**
+```powershell
+irm https://raw.githubusercontent.com/Idrisanu/ctx/main/install.ps1 | iex
+```
+
+This installs the latest `v*` release to `~/.local/bin` (or
+`%USERPROFILE%\.local\bin` on Windows). Pin a version with
+`CTX_VERSION=v0.1.0` (sh) / `$env:CTX_VERSION="v0.1.0"` (PowerShell).
+
+> **macOS note:** the binary isn't Apple-signed, so Gatekeeper blocks the
+> first run. Right-click `ctx` → Open once, or run:
+> `xattr -d com.apple.quarantine $(which ctx)`.
+> **Windows note:** SmartScreen may warn on first run — choose "Run anyway".
+
+**From source** (requires Rust 1.85+; the binary itself has no runtime deps):
 ```bash
 git clone https://github.com/Idrisanu/ctx
 cd ctx
