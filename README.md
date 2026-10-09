@@ -1,5 +1,9 @@
 # CTX — Git for AI context
 
+[![release](https://img.shields.io/github/v/release/Idrisanu/ctx)](https://github.com/Idrisanu/ctx/releases)
+[![license](https://img.shields.io/github/license/Idrisanu/ctx)](LICENSE)
+[![build](https://img.shields.io/github/actions/workflow/status/Idrisanu/ctx/release.yml?label=release)](https://github.com/Idrisanu/ctx/actions)
+
 Your AI shouldn't forget just because you changed the tool.
 
 CTX is an open-source, local-first CLI that preserves project state, AI

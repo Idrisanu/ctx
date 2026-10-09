@@ -1,0 +1,67 @@
+:root {
+  --bg: #0b0f14; --panel: #11161d; --line: #232c38;
+  --fg: #e6edf3; --muted: #8b98a8; --acc: #4ade80; --warn: #fbbf24;
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--fg);
+  font: 16px/1.6 system-ui, -apple-system, "Segoe UI", sans-serif; }
+code, pre { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+.nav { display: flex; justify-content: space-between; align-items: center;
+  padding: 1rem 2rem; border-bottom: 1px solid var(--line); position: sticky;
+  top: 0; background: var(--bg); }
+.logo { font-size: 1.5rem; font-weight: 800; color: var(--fg); text-decoration: none; }
+.logo .dot { color: var(--acc); }
+.nav nav a { color: var(--muted); text-decoration: none; margin-left: 1.4rem; }
+.nav nav a:hover { color: var(--fg); }
+.nav .github { color: var(--acc); font-weight: 600; }
+main { max-width: 960px; margin: 0 auto; padding: 0 1.5rem 4rem; }
+.hero { text-align: center; padding: 4rem 0 3rem; }
+.hero h1 { font-size: clamp(2rem, 5vw, 3.2rem); line-height: 1.15; margin: 0 0 1rem; }
+.sub { color: var(--muted); max-width: 640px; margin: 0 auto 2rem; }
+.cta { display: flex; gap: .6rem; justify-content: center; align-items: center; flex-wrap: wrap; }
+.cta code { background: var(--panel); border: 1px solid var(--line);
+  padding: .6rem 1rem; border-radius: 8px; font-size: .85rem; }
+button { background: var(--acc); color: #06210f; border: 0; border-radius: 8px;
+  padding: .6rem 1rem; font-weight: 700; cursor: pointer; }
+button:hover { filter: brightness(1.1); }
+.github-btn { color: var(--acc); font-weight: 700; text-decoration: none;
+  border: 1px solid var(--acc); border-radius: 8px; padding: .55rem 1rem; }
+section { margin-top: 3.5rem; }
+h2 { font-size: 1.6rem; }
+.terminal { background: #05080c; border: 1px solid var(--line); border-radius: 12px;
+  overflow: hidden; }
+.term-bar { display: flex; gap: .4rem; padding: .6rem .9rem; background: var(--panel); }
+.term-bar span { width: 11px; height: 11px; border-radius: 50%; background: #39424e; }
+.term-bar span:first-child { background: #f87171; }
+.term-bar span:nth-child(2) { background: var(--warn); }
+.term-bar span:nth-child(3) { background: var(--acc); }
+#term-body { margin: 0; padding: 1.2rem; min-height: 340px; white-space: pre-wrap;
+  font-size: .85rem; }
+#term-body .p { color: var(--acc); }
+#term-body .c { color: #7dd3fc; }
+#term-body .w { color: var(--warn); }
+#replay { margin: 0 1.2rem 1.2rem; }
+.cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 1rem; }
+.card { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 1.2rem; }
+.card h3 { margin-top: 0; color: var(--acc); }
+.card code, .note code, td code { background: #05080c; padding: .1rem .35rem; border-radius: 5px; font-size: .85em; }
+.note { color: var(--muted); }
+.cmdgrid { display: grid; gap: .6rem; }
+.cmdgrid > div { display: grid; grid-template-columns: minmax(220px, 340px) 1fr; gap: 1rem;
+  background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: .7rem 1rem; }
+.cmdgrid code { color: var(--acc); }
+.cmdgrid span { color: var(--muted); }
+table { width: 100%; border-collapse: collapse; }
+th, td { text-align: left; padding: .6rem .8rem; border-bottom: 1px solid var(--line); }
+th { color: var(--muted); font-weight: 600; }
+.tabs { display: flex; gap: .5rem; margin-bottom: .8rem; }
+.tabs button { background: var(--panel); color: var(--muted); border: 1px solid var(--line); }
+.tabs button.active { background: var(--acc); color: #06210f; border-color: var(--acc); }
+.tabbody { position: relative; }
+.tabbody pre { background: #05080c; border: 1px solid var(--line); border-radius: 12px;
+  padding: 1.2rem; overflow-x: auto; }
+.tabbody button { position: absolute; top: .8rem; right: .8rem; padding: .35rem .7rem; font-size: .8rem; }
+footer { text-align: center; color: var(--muted); border-top: 1px solid var(--line);
+  padding: 2rem; margin-top: 3rem; }
+footer a { color: var(--acc); }
+@media (max-width: 640px) { .cmdgrid > div { grid-template-columns: 1fr; } }

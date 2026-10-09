@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CTX — Git for AI context</title>
+<meta name="description" content="CTX is a local-first CLI that preserves project state across AI sessions, tools, and machines. Your AI shouldn't forget just because you changed the tool.">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<header class="nav">
+  <a class="logo" href="#">ctx<span class="dot">.</span></a>
+  <nav>
+    <a href="#demo">Demo</a>
+    <a href="#how">How it works</a>
+    <a href="#commands">Commands</a>
+    <a href="#install">Install</a>
+    <a class="github" href="https://github.com/Idrisanu/ctx">GitHub →</a>
+  </nav>
+</header>
+
+<main>
+<section class="hero">
+  <h1>Your AI shouldn't forget<br>just because you changed the tool.</h1>
+  <p class="sub">CTX is an open-source, local-first CLI that preserves project state,
+  AI context, decisions, and environment — so you can move between AI agents,
+  sessions, and machines without losing where you left off.</p>
+  <div class="cta">
+    <code id="quick-install">curl -fsSL https://raw.githubusercontent.com/Idrisanu/ctx/main/install.sh | sh</code>
+    <button data-copy="quick-install">Copy</button>
+    <a class="github-btn" href="https://github.com/Idrisanu/ctx">★ Star on GitHub</a>
+  </div>
+</section>
+
+<section id="demo">
+  <h2>The token-limit scenario, live</h2>
+  <p>You built half your app in one agent. It hits its limit. Watch what happens next:</p>
+  <div class="terminal">
+    <div class="term-bar"><span></span><span></span><span></span></div>
+    <pre id="term-body"></pre>
+    <button id="replay">↻ Replay demo</button>
+  </div>
+</section>
+
+<section id="how">
+  <h2>How it knows where the AI stopped</h2>
+  <div class="cards">
+    <div class="card">
+      <h3>A · Cooperative note</h3>
+      <p>The agent maintains <code>.ctx/handoffs/current.md</code> — goal, completed,
+      current work, last commands, next step. Works with any tool that reads
+      instruction files. Zero per-agent code.</p>
+    </div>
+    <div class="card">
+      <h3>B · Session ingestion</h3>
+      <p><code>ctx ingest</code> / <code>ctx monitor</code> read Claude Code transcripts,
+      the OpenCode session store, and Gemini CLI chats: prompts, commands run,
+      files touched, errors, token usage. Summaries only — transcripts never stored.</p>
+    </div>
+    <div class="card">
+      <h3>C · Reconstruction</h3>
+      <p>Git state, auto-checkpoints on every commit, environment detection.
+      Always works, even with tools that keep no transcript. Files exact, intent honest.</p>
+    </div>
+  </div>
+  <p class="note"><code>ctx resume</code> merges all three and labels which produced what.
+  It never claims data it doesn't have.</p>
+</section>
+
+<section id="commands">
+  <h2>One loop to learn</h2>
+  <div class="cmdgrid">
+    <div><code>ctx init --agent gemini</code><span>One-time setup: .ctx/, git hook, agent instruction</span></div>
+    <div><code>ctx status</code><span>Where things stand — state, checkpoint age, conflicts</span></div>
+    <div><code>ctx monitor --once</code><span>Pull the latest AI session into .ctx</span></div>
+    <div><code>ctx resume</code><span>Handoff file for the next agent to read</span></div>
+    <div><code>ctx switch &lt;agent&gt;</code><span>Checkpoint + archive note + render, in one step</span></div>
+    <div><code>ctx verify</code><span>Did the new agent follow the handoff?</span></div>
+    <div><code>ctx decide "..." --reason "..."</code><span>Record decisions; contradictions get flagged</span></div>
+    <div><code>ctx commit -m "..."</code><span>Commit WIP, skipping secrets, with safety guards</span></div>
+    <div><code>ctx doctor</code><span>Environment check for a new machine</span></div>
+  </div>
+  <p class="note">Full reference: <code>ctx --help</code> documents every command and flag.</p>
+</section>
+
+<section id="agents">
+  <h2>Agent-agnostic by design</h2>
+  <table>
+    <tr><th>Agent</th><th>Note via</th><th>Transcript</th><th>Handoff</th></tr>
+    <tr><td>Claude Code</td><td>CLAUDE.md</td><td>✓ JSONL</td><td><code>--agent claude</code></td></tr>
+    <tr><td>OpenCode</td><td>AGENTS.md</td><td>✓ SQLite</td><td><code>--agent opencode</code></td></tr>
+    <tr><td>Gemini CLI</td><td>GEMINI.md</td><td>✓ chats</td><td><code>--agent gemini</code></td></tr>
+    <tr><td>Codex</td><td>AGENTS.md</td><td>planned</td><td><code>--agent codex</code></td></tr>
+    <tr><td>Copilot / VS Code</td><td>copilot instructions</td><td>none on disk — note + git</td><td><code>--agent copilot</code></td></tr>
+    <tr><td>Anything else</td><td>AGENTS.md</td><td><code>ingest --from file.jsonl</code></td><td><code>generic</code></td></tr>
+  </table>
+</section>
+
+<section id="install">
+  <h2>Install</h2>
+  <div class="tabs">
+    <button data-tab="linux" class="active">Linux</button>
+    <button data-tab="mac">macOS</button>
+    <button data-tab="win">Windows</button>
+    <button data-tab="src">From source</button>
+  </div>
+  <div class="tabbody">
+    <pre id="install-linux">curl -fsSL https://raw.githubusercontent.com/Idrisanu/ctx/main/install.sh | sh</pre>
+    <pre id="install-mac" hidden>curl -fsSL https://raw.githubusercontent.com/Idrisanu/ctx/main/install.sh | sh
+# first run only (unsigned binary):
+xattr -d com.apple.quarantine $(which ctx)</pre>
+    <pre id="install-win" hidden>irm https://raw.githubusercontent.com/Idrisanu/ctx/main/install.ps1 | iex</pre>
+    <pre id="install-src" hidden>git clone https://github.com/Idrisanu/ctx
+cd ctx
+cargo install --path crates/cli</pre>
+    <button data-copy-current>Copy</button>
+  </div>
+  <p class="note">Binaries: Linux x86_64 · macOS ARM + Intel · Windows x86_64 — on every release.</p>
+</section>
+</main>
+
+<footer>
+  <p>CTX is MIT-licensed. <a href="https://github.com/Idrisanu/ctx">github.com/Idrisanu/ctx</a></p>
+  <p>No accounts. No cloud. No telemetry. Your context stays yours.</p>
+</footer>
+
+<script src="app.js"></script>
+</body>
+</html>

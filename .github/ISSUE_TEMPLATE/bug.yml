@@ -1,0 +1,42 @@
+name: Bug report
+description: Something ctx did wrong
+labels: [bug]
+body:
+  - type: input
+    id: version
+    attributes:
+      label: ctx version
+      description: Output of `ctx --version`
+    validations:
+      required: true
+  - type: input
+    id: os
+    attributes:
+      label: OS
+      description: e.g. Ubuntu 24.04, macOS 15 arm64, Windows 11
+    validations:
+      required: true
+  - type: input
+    id: agent
+    attributes:
+      label: AI agent in use
+      description: e.g. Claude Code, Gemini CLI, Codex, Copilot, OpenCode
+    validations:
+      required: true
+  - type: textarea
+    id: status
+    attributes:
+      label: `ctx status` output
+      render: shell
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened vs what you expected
+    validations:
+      required: true
+  - type: textarea
+    id: handoff
+    attributes:
+      label: Handoff excerpt (if relevant)
+      description: Paste the part of .ctx/handoffs/*.md that went wrong. Remove anything private first.
+      render: markdown
