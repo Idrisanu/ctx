@@ -82,7 +82,17 @@ impl CtxDir {
 
     pub fn load_state(&self) -> Result<ProjectContext> {
         let s = fs::read_to_string(self.state_path()).context("read state.json")?;
-        Ok(serde_json::from_str(&s)?)
+        let state: ProjectContext = serde_json::from_str(&s).context(
+            "state.json is not valid ctx state (was it edited by hand? try `ctx init` in a fresh directory)",
+        )?;
+        if state.version > ctx_core::STATE_VERSION {
+            anyhow::bail!(
+                "state.json needs ctx v{}+ (this ctx writes v{}). Install a newer ctx, or back up and re-run `ctx init`.",
+                state.version,
+                ctx_core::STATE_VERSION
+            );
+        }
+        Ok(state)
     }
 
     pub fn save_state(&self, state: &ProjectContext) -> Result<()> {

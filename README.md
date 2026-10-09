@@ -26,7 +26,6 @@ ctx inspect <what>        decisions | tasks | environment | agents
 ctx resume [--agent X]    Prepare agent context
 ctx recover               Reconstruct last known state
 ctx diff                  Context changes since last checkpoint
-ctx watch                 Observe filesystem changes
 ctx monitor [--interval N] [--once]  Keep .ctx fresh from live AI sessions
 ctx ingest [--from file]  Import the newest AI session for this project
 ctx agents                Show detected session sources on this machine

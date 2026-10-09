@@ -7,7 +7,6 @@ members = [
     "crates/git",
     "crates/env",
     "crates/context",
-    "crates/observer",
     "crates/adapters",
     "crates/ingest",
 ]

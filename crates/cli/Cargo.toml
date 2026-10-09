@@ -20,6 +20,5 @@ ctx-git = { path = "../git" }
 ctx-env = { path = "../env" }
 ctx-context = { path = "../context" }
 chrono.workspace = true
-ctx-observer = { path = "../observer" }
 ctx-adapters = { path = "../adapters" }
 ctx-ingest = { path = "../ingest" }

@@ -53,19 +53,20 @@ pub mod model {
         ta.iter().any(|t| tb.contains(t))
     }
 
+    /// Decisions still awaiting human review (flagged, not superseded).
+    pub fn live_conflicts(state: &ProjectContext) -> Vec<&Decision> {
+        state
+            .decisions
+            .iter()
+            .filter(|d| d.active() && d.conflicts_with.is_some())
+            .collect()
+    }
+
     #[derive(Debug, Clone, Serialize, Deserialize, Default)]
     pub struct Task {
         pub title: String,
         pub status: String, // pending | in_progress | done
         pub notes: Option<String>,
-    }
-
-    #[derive(Debug, Clone, Serialize, Deserialize, Default)]
-    pub struct SessionMeta {
-        pub agent: Option<String>,
-        pub started_at: Option<String>,
-        pub ended_at: Option<String>,
-        pub task: Option<String>,
     }
 
     #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -100,8 +101,6 @@ pub mod model {
         #[serde(default)]
         pub tasks: Vec<Task>,
         #[serde(default)]
-        pub sessions: Vec<SessionMeta>,
-        #[serde(default)]
         pub environment: EnvironmentState,
         /// Compressed summary of the most recently ingested AI session.
         /// Set by `ctx ingest`; source tracked for honest provenance.
@@ -124,7 +123,6 @@ pub mod model {
                 errors: vec![],
                 next_action: None,
                 tasks: vec![],
-                sessions: vec![],
                 environment: Default::default(),
                 ingested: None,
             }
@@ -180,8 +178,22 @@ pub mod model {
 
 pub use model::*;
 
+pub const STATE_VERSION: u32 = 1;
+
 pub fn next_checkpoint_id(counter: u64) -> String {
     format!("CTX-{:04}", counter)
+}
+
+/// Allocate the next free checkpoint ID, skipping any that already exist
+/// (e.g. after hand-edited config). Bumps the counter past collisions.
+pub fn alloc_checkpoint_id(counter: &mut u64, existing: &[model::Checkpoint]) -> String {
+    loop {
+        *counter += 1;
+        let id = next_checkpoint_id(*counter);
+        if !existing.iter().any(|c| c.id == id) {
+            return id;
+        }
+    }
 }
 
 #[cfg(test)]
@@ -201,6 +213,38 @@ mod tests {
         let back: ProjectContext = serde_json::from_str(&j).unwrap();
         assert_eq!(back.project, "demo");
         assert_eq!(back.constraints, vec!["Use TypeScript"]);
+    }
+    #[test]
+    fn alloc_skips_collisions() {
+        let existing = vec![
+            Checkpoint {
+                id: "CTX-0001".into(),
+                git_commit: None,
+                branch: None,
+                agent: None,
+                task: None,
+                files_changed: 0,
+                files: vec![],
+                status: "auto".into(),
+                created_at: "".into(),
+                summary: None,
+            },
+            Checkpoint {
+                id: "CTX-0002".into(),
+                git_commit: None,
+                branch: None,
+                agent: None,
+                task: None,
+                files_changed: 0,
+                files: vec![],
+                status: "auto".into(),
+                created_at: "".into(),
+                summary: None,
+            },
+        ];
+        let mut counter = 0;
+        assert_eq!(alloc_checkpoint_id(&mut counter, &existing), "CTX-0003");
+        assert_eq!(counter, 3);
     }
     #[test]
     fn conflict_heuristic() {
