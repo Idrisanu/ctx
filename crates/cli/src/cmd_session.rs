@@ -100,6 +100,22 @@ pub(crate) fn cmd_resume(agent: Option<String>) -> Result<()> {
         )
     })?;
     let mut rendered = adapter.render(&state, &git);
+    // Uncommitted frontier: the exact place mid-milestone work stopped.
+    let cps = ctx.load_checkpoints().unwrap_or_default();
+    let (added, removed) = working_diff(&cps, &git);
+    if !added.is_empty() || !removed.is_empty() {
+        rendered.push_str("\n## Uncommitted changes since last checkpoint\n");
+        match cps.last() {
+            Some(cp) => rendered.push_str(&format!("Baseline: {}\n", cp.id)),
+            None => rendered.push_str("Baseline: (none — everything below is uncommitted)\n"),
+        }
+        for f in &added {
+            rendered.push_str(&format!("+ {}\n", f));
+        }
+        for f in &removed {
+            rendered.push_str(&format!("- {}\n", f));
+        }
+    }
     // provenance: say where each part came from
     rendered.push_str("\n---\nSources: project/git state");
     if state.ingested.is_some() {
@@ -144,12 +160,40 @@ pub(crate) fn cmd_resume(agent: Option<String>) -> Result<()> {
                 rendered.push_str(&format!("- {}\n", e));
             }
         }
+        if !ing.commands.is_empty() {
+            rendered.push_str("Recent commands (most recent last):\n");
+            for c in ing.commands.iter().rev().take(5).rev() {
+                rendered.push_str(&format!("- `{}`\n", c));
+            }
+        }
+    }
+    if !state.note_commands.is_empty() {
+        rendered.push_str("Commands from AI note:\n");
+        for c in &state.note_commands {
+            rendered.push_str(&format!("- `{}`\n", c));
+        }
     }
     let cwd = project_root();
     let merged = ctx_context::merged_instructions(&root, &cwd);
     if !merged.is_empty() {
         rendered.push_str("\n## Project instructions\n\n");
         rendered.push_str(&merged);
+    }
+    let discovered = ctx_context::discover(&root);
+    if !discovered.planning.is_empty() || !discovered.readmes.is_empty() {
+        rendered.push_str("\n## Project documents (read these for full context)\n");
+        for p in &discovered.planning {
+            rendered.push_str(&format!(
+                "- {}\n",
+                p.strip_prefix(&root).unwrap_or(p).display()
+            ));
+        }
+        for p in &discovered.readmes {
+            rendered.push_str(&format!(
+                "- {}\n",
+                p.strip_prefix(&root).unwrap_or(p).display()
+            ));
+        }
     }
     let dir = ctx.root.join("handoffs");
     std::fs::create_dir_all(&dir)?;
@@ -160,6 +204,12 @@ pub(crate) fn cmd_resume(agent: Option<String>) -> Result<()> {
         adapter.name(),
         path.display()
     );
+    if !git.dirty_files.is_empty() {
+        println!(
+            "⚠ {} uncommitted file(s) — commit before switching so the handoff pins them (`ctx commit -m \"...\"` or git commit).",
+            git.dirty_files.len()
+        );
+    }
     Ok(())
 }
 
@@ -211,11 +261,24 @@ pub(crate) fn cmd_diff() -> Result<()> {
     let (ctx, root) = open_ctx()?;
     let git = ctx_git::info(&root);
     let cps = ctx.load_checkpoints()?;
+    print_diff(&cps, &git);
+    Ok(())
+}
 
+/// Working tree vs last checkpoint, shared by `ctx diff` and `ctx resume`.
+pub(crate) fn working_diff(
+    cps: &[ctx_core::Checkpoint],
+    git: &ctx_git::GitInfo,
+) -> (Vec<String>, Vec<String>) {
     let last: Vec<String> = cps.last().map(|c| c.files.clone()).unwrap_or_default();
     let now: Vec<String> = git.dirty_files.clone();
-    let added: Vec<_> = now.iter().filter(|f| !last.contains(f)).collect();
-    let removed: Vec<_> = last.iter().filter(|f| !now.contains(f)).collect();
+    let added: Vec<String> = now.iter().filter(|f| !last.contains(f)).cloned().collect();
+    let removed: Vec<String> = last.iter().filter(|f| !now.contains(f)).cloned().collect();
+    (added, removed)
+}
+
+fn print_diff(cps: &[ctx_core::Checkpoint], git: &ctx_git::GitInfo) {
+    let (added, removed) = working_diff(cps, git);
 
     println!("Context diff (vs last checkpoint)");
     match cps.last() {
@@ -245,7 +308,6 @@ pub(crate) fn cmd_diff() -> Result<()> {
     if added.is_empty() && removed.is_empty() {
         println!("No working-tree changes since last checkpoint.");
     }
-    Ok(())
 }
 
 pub(crate) fn cmd_ingest(from: Option<String>) -> Result<()> {

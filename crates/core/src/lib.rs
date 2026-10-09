@@ -106,6 +106,10 @@ pub mod model {
         /// Set by `ctx ingest`; source tracked for honest provenance.
         #[serde(default)]
         pub ingested: Option<ctx_ingest_summary::Ingested>,
+        /// Commands quoted in the AI cooperative note. Filled by apply_note
+        /// at display time; never persisted.
+        #[serde(default, skip_serializing)]
+        pub note_commands: Vec<String>,
     }
 
     impl Default for ProjectContext {
@@ -125,6 +129,7 @@ pub mod model {
                 tasks: vec![],
                 environment: Default::default(),
                 ingested: None,
+                note_commands: vec![],
             }
         }
     }

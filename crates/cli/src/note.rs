@@ -20,7 +20,7 @@ pub(crate) fn inject_cooperative_note(root: &std::path::Path) {
 
 pub(crate) fn inject_note_file(path: &std::path::Path) {
     let block = format!(
-        "{}\n## For AI coding agents (managed by CTX)\n\nMaintain `.ctx/handoffs/current.md` while working. Update it after every milestone, every batch of tool calls, and before ending a turn — not only at the end. Include:\n\n- Goal\n- Completed\n- Current work\n- Last command run (and its result)\n- Last error, if any\n- Next action\n- Blockers\n\nCTX reads this file to build the handoff when the session ends (token limit, crash, or tool switch). Keep it short and factual.\n\nWhen you establish a lasting pattern or make an architectural choice, also record it with `ctx decide \"...\" --reason \"...\"` so the next agent cannot silently contradict it.\n{}\n",
+        "{}\n## For AI coding agents (managed by CTX)\n\nMaintain `.ctx/handoffs/current.md` while working. Update it after every milestone, every batch of tool calls, and before ending a turn — not only at the end. Include:\n\n- Goal\n- Completed\n- Current work (if mid-milestone: what is done *inside* it, files touched, exact next step)\n- Last 3 commands run, most recent last (and their results)\n- Last error, if any\n- Next action\n- Blockers\n\nCTX reads this file to build the handoff when the session ends (token limit, crash, or tool switch). Keep it short and factual.\n\nWhen you establish a lasting pattern or make an architectural choice, also record it with `ctx decide \"...\" --reason \"...\"` so the next agent cannot silently contradict it.\n{}\n",
         NOTE_BLOCK_START, NOTE_BLOCK_END
     );
     let existing = std::fs::read_to_string(path).unwrap_or_default();
@@ -84,6 +84,12 @@ pub(crate) fn apply_note(state: &mut ProjectContext, root: &std::path::Path) {
             if let Some(v) = v {
                 blockers.push(v);
             }
+        } else if t.starts_with("- Last 3 commands") || t.starts_with("- Last command") {
+            section = "commands";
+            let rest = t.split_once(':').map(|x| x.1).unwrap_or("").trim();
+            if let Some(v) = clean_note_value(rest) {
+                state.note_commands.push(v);
+            }
         } else if t.starts_with("- ") && !section.is_empty() {
             let v = t[2..].trim().to_string();
             if v.is_empty() {
@@ -93,6 +99,7 @@ pub(crate) fn apply_note(state: &mut ProjectContext, root: &std::path::Path) {
                 "completed" => completed.push(v),
                 "current" => current.push(v),
                 "blockers" => blockers.push(v),
+                "commands" => state.note_commands.push(v),
                 _ => {}
             }
         } else if t.starts_with("- Constraints:") {

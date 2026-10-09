@@ -74,3 +74,49 @@ pub fn info(root: &Path) -> GitInfo {
     }
     info
 }
+
+/// Patterns from `<root>/.ctxignore` (gitignore-ish, small subset):
+/// blank lines and `#` comments skipped; `dir/` matches a prefix;
+/// `*.ext` matches file extension; otherwise exact relative path.
+pub fn ctxignore_patterns(root: &Path) -> Vec<String> {
+    let Ok(content) = std::fs::read_to_string(root.join(".ctxignore")) else {
+        return Vec::new();
+    };
+    content
+        .lines()
+        .map(|l| l.trim())
+        .filter(|l| !l.is_empty() && !l.starts_with('#'))
+        .map(|l| l.to_string())
+        .collect()
+}
+
+pub fn ctxignored(patterns: &[String], rel_path: &str) -> bool {
+    let p = rel_path.trim_start_matches("./");
+    patterns.iter().any(|pat| {
+        if let Some(dir) = pat.strip_suffix('/') {
+            p == dir || p.starts_with(&format!("{}/", dir))
+        } else if let Some(ext) = pat.strip_prefix("*.") {
+            p.ends_with(&format!(".{}", ext)) || p == ext
+        } else {
+            p == pat
+        }
+    })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn ctxignore_matching() {
+        let pats = vec![
+            ".env".to_string(),
+            "*.pem".to_string(),
+            "secrets/".to_string(),
+        ];
+        assert!(ctxignored(&pats, ".env"));
+        assert!(ctxignored(&pats, "certs/key.pem"));
+        assert!(ctxignored(&pats, "secrets/token.txt"));
+        assert!(!ctxignored(&pats, "src/main.rs"));
+        assert!(!ctxignored(&pats, ".env.example"));
+    }
+}

@@ -173,6 +173,9 @@ pub(crate) fn cmd_status() -> Result<()> {
     }
     println!("Git           {}", git.branch.as_deref().unwrap_or("none"));
     println!("Changes       {} files", git.uncommitted_count);
+    if !git.dirty_files.is_empty() {
+        println!("⚠ Uncommitted work — commit before switching agents (`ctx commit -m \"...\"`)");
+    }
     println!("Context       Unknown (no live agent data)");
     match cps.last() {
         Some(cp) => println!("Checkpoint    {} ({})", cp.id, cp.created_at),
@@ -438,5 +441,55 @@ pub(crate) fn cmd_checkpoint_auto() -> Result<()> {
     });
     let _ = ctx.save_config(&config);
     let _ = ctx.save_checkpoints(&cps);
+    Ok(())
+}
+
+/// Opt-in commit helper: stages everything git sees except `.ctxignore`
+/// matches, then commits. The post-commit hook auto-checkpoints.
+/// Never silent — always prints what was skipped and the result.
+pub(crate) fn cmd_commit(message: Option<String>) -> Result<()> {
+    let (_ctx, root) = open_ctx()?;
+    let Some(msg) = message else {
+        anyhow::bail!("usage: ctx commit -m \"message\"");
+    };
+    let git = ctx_git::info(&root);
+    if !git.is_repo {
+        anyhow::bail!("not a git repository");
+    }
+    if git.dirty_files.is_empty() {
+        println!("Nothing to commit — working tree is clean.");
+        return Ok(());
+    }
+    let patterns = ctx_git::ctxignore_patterns(&root);
+    let (skipped, included): (Vec<_>, Vec<_>) = git
+        .dirty_files
+        .iter()
+        .partition(|f| ctx_git::ctxignored(&patterns, f));
+    for f in &skipped {
+        println!("Skipped by .ctxignore: {}", f);
+    }
+    if included.is_empty() {
+        println!("Nothing to commit after .ctxignore filtering.");
+        return Ok(());
+    }
+    let add = std::process::Command::new("git")
+        .arg("add")
+        .arg("--")
+        .args(&included)
+        .current_dir(&root)
+        .status()?;
+    if !add.success() {
+        anyhow::bail!("git add failed");
+    }
+    let commit = std::process::Command::new("git")
+        .arg("commit")
+        .arg("-m")
+        .arg(&msg)
+        .current_dir(&root)
+        .status()?;
+    if !commit.success() {
+        anyhow::bail!("git commit failed (see git output above)");
+    }
+    println!("Committed {} file(s): {}", included.len(), msg);
     Ok(())
 }

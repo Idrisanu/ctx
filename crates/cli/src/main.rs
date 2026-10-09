@@ -73,6 +73,10 @@ enum Commands {
     },
     #[command(name = "checkpoint-auto")]
     CheckpointAuto,
+    Commit {
+        #[arg(short, long)]
+        message: Option<String>,
+    },
     Hooks {
         #[command(subcommand)]
         action: HooksAction,
@@ -128,6 +132,7 @@ fn main() -> Result<()> {
         Commands::Agents => cmd_agents(),
         Commands::Monitor { interval, once } => cmd_monitor(interval, once),
         Commands::CheckpointAuto => cmd_checkpoint_auto(),
+        Commands::Commit { message } => cmd_commit(message),
         Commands::Hooks { action } => match action {
             HooksAction::Install => {
                 let root = project_root();

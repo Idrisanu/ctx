@@ -21,6 +21,7 @@ ctx status                Show current project state
 ctx doctor                Check environment (runtimes, docker, env vars)
 ctx history               List checkpoints
 ctx checkpoint [summary]  Create a manual checkpoint
+ctx commit -m "msg"      Commit, skipping .ctxignore matches (hook auto-checkpoints)
 ctx handoff [--agent X]   Render a markdown handoff (claude|gemini|codex|copilot|opencode|generic)
 ctx inspect <what>        decisions | tasks | environment | agents
 ctx resume [--agent X]    Prepare agent context

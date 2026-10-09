@@ -6,10 +6,36 @@ pub struct ProjectDocs {
     pub instructions: Vec<PathBuf>, // ordered shallow → deep
     pub readmes: Vec<PathBuf>,
     pub docs_dirs: Vec<PathBuf>,
+    /// PRD / MVP / milestone / roadmap style planning docs (by path).
+    pub planning: Vec<PathBuf>,
 }
 
 const INSTRUCTION_FILES: &[&str] = &["AGENTS.md", "CLAUDE.md", "GEMINI.md", "CONTRIBUTING.md"];
 const PRUNE_DIRS: &[&str] = &[".git", "node_modules", "target", ".ctx", "dist", "build"];
+
+/// File stems that mark a planning doc (case-insensitive, prefix match so
+/// MILESTONES.md / milestone-1.md both hit).
+const PLANNING_STEMS: &[&str] = &[
+    "prd",
+    "mvp",
+    "milestone",
+    "roadmap",
+    "plan",
+    "spec",
+    "requirements",
+    "changelog",
+];
+
+fn is_planning(name: &str) -> bool {
+    if !name.to_lowercase().ends_with(".md") {
+        return false;
+    }
+    let stem = name.to_lowercase();
+    let stem = stem.strip_suffix(".md").unwrap_or(&stem);
+    PLANNING_STEMS.iter().any(|p| {
+        stem == *p || stem.starts_with(&format!("{}-", p)) || stem.starts_with(&format!("{}_", p))
+    })
+}
 
 pub fn discover(root: &Path) -> ProjectDocs {
     let mut docs = ProjectDocs::default();
@@ -31,6 +57,8 @@ pub fn discover(root: &Path) -> ProjectDocs {
                 docs.instructions.push(path.to_path_buf());
             } else if name.eq_ignore_ascii_case("README.md") {
                 docs.readmes.push(path.to_path_buf());
+            } else if is_planning(&name) {
+                docs.planning.push(path.to_path_buf());
             }
         } else if path.is_dir() && name == "docs" {
             docs.docs_dirs.push(path.to_path_buf());
@@ -45,6 +73,7 @@ pub fn discover(root: &Path) -> ProjectDocs {
     docs.instructions.sort_by(by_depth);
     docs.readmes.sort_by(by_depth);
     docs.docs_dirs.sort_by(by_depth);
+    docs.planning.sort_by(by_depth);
     docs
 }
 
@@ -99,6 +128,22 @@ mod tests {
         let rootview = merged_instructions(&dir, &dir);
         assert!(rootview.contains("root rules"));
         assert!(!rootview.contains("api rules"));
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn discovers_planning_docs() {
+        let dir = std::env::temp_dir().join(format!("ctx-plandocs-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("PRD.md"), "prd").unwrap();
+        std::fs::write(dir.join("milestone-1.md"), "m1").unwrap();
+        std::fs::write(dir.join("notes.md"), "not planning").unwrap();
+        std::fs::write(dir.join("random.txt"), "not md").unwrap();
+
+        let docs = discover(&dir);
+        assert_eq!(docs.planning.len(), 2);
 
         let _ = std::fs::remove_dir_all(&dir);
     }
