@@ -302,6 +302,7 @@ name = "ctx-ingest"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "ctx-core",
  "rusqlite",
  "serde",
  "serde_json",

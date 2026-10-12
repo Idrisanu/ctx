@@ -55,20 +55,7 @@ impl CtxDir {
     }
 
     pub fn init(&self) -> Result<()> {
-        if self.exists() {
-            // idempotent: refresh scaffolding, don't fail
-            for sub in [
-                "context",
-                "sessions",
-                "snapshots",
-                "decisions",
-                "handoffs",
-                "index",
-            ] {
-                fs::create_dir_all(self.root.join(sub))?;
-            }
-            return Ok(());
-        }
+        // idempotent: refresh scaffolding, don't fail on re-init
         for sub in [
             "context",
             "sessions",
@@ -79,6 +66,8 @@ impl CtxDir {
         ] {
             fs::create_dir_all(self.root.join(sub))?;
         }
+        // The flock file is runtime-only; keep it out of git everywhere.
+        atomic_write(&self.root.join(".gitignore"), b".lock\n")?;
         Ok(())
     }
 

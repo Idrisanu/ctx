@@ -3,6 +3,7 @@ use anyhow::Result;
 
 pub(crate) fn cmd_task(title: String) -> Result<()> {
     let (ctx, _) = open_ctx()?;
+    let title = ctx_core::redact_text(&title);
     ctx.update_state(|state| {
         state.tasks.push(ctx_core::Task {
             title: title.clone(),
@@ -21,6 +22,8 @@ pub(crate) fn cmd_decide(
     supersedes: Option<String>,
 ) -> Result<()> {
     let (ctx, _) = open_ctx()?;
+    let text = ctx_core::redact_text(&text);
+    let reason = reason.map(|r| ctx_core::redact_text(&r));
     let mut new_id = String::new();
     let mut flagged: Vec<String> = Vec::new();
     ctx.update_state(|state| {
@@ -102,6 +105,7 @@ pub(crate) fn cmd_resolve(id: String) -> Result<()> {
 
 pub(crate) fn cmd_complete(item: String) -> Result<()> {
     let (ctx, _) = open_ctx()?;
+    let item = ctx_core::redact_text(&item);
     ctx.update_state(|state| {
         state.completed.push(item.clone());
         Ok(())
@@ -112,6 +116,7 @@ pub(crate) fn cmd_complete(item: String) -> Result<()> {
 
 pub(crate) fn cmd_next(action: String) -> Result<()> {
     let (ctx, _) = open_ctx()?;
+    let action = ctx_core::redact_text(&action);
     ctx.update_state(|state| {
         state.next_action = Some(action.clone());
         Ok(())
@@ -122,6 +127,7 @@ pub(crate) fn cmd_next(action: String) -> Result<()> {
 
 pub(crate) fn cmd_objective(text: String) -> Result<()> {
     let (ctx, _) = open_ctx()?;
+    let text = ctx_core::redact_text(&text);
     ctx.update_state(|state| {
         state.objective = Some(text.clone());
         state.status = "in_progress".into();

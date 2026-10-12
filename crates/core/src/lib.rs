@@ -62,6 +62,157 @@ pub mod model {
             .collect()
     }
 
+    /// Conservative secret redaction for text about to be persisted into
+    /// `.ctx/` (which is designed to be committed). Only high-confidence
+    /// patterns are touched; anything ambiguous is left alone and the
+    /// function documents that limit. Returns redacted text.
+    ///
+    /// Covered: OpenAI `sk-` keys, GitHub tokens, AWS access keys, Slack
+    /// tokens, PEM private-key blocks, and `KEY=VALUE` assignments where
+    /// the key name says secret/token/password and the value is ≥8 chars.
+    /// NOT covered: bare hex strings, JWTs without a label, prose that
+    /// merely mentions secrets. When in doubt, keep `.ctx/` private.
+    pub fn redact_text(input: &str) -> String {
+        let mut out = input.to_string();
+        out = redact_prefixed(&out);
+        out = redact_pem_blocks(&out);
+        out = redact_assignments(&out);
+        out
+    }
+
+    fn redact_prefixed(s: &str) -> String {
+        // (prefix matcher, label)
+        const PREFIXES: &[(&str, &str)] = &[
+            ("sk-", "OPENAI_KEY"),
+            ("sk-proj-", "OPENAI_KEY"),
+            ("ghp_", "GITHUB_TOKEN"),
+            ("gho_", "GITHUB_TOKEN"),
+            ("ghu_", "GITHUB_TOKEN"),
+            ("ghs_", "GITHUB_TOKEN"),
+            ("ghr_", "GITHUB_TOKEN"),
+            ("github_pat_", "GITHUB_TOKEN"),
+            ("AKIA", "AWS_KEY"),
+            ("xoxb-", "SLACK_TOKEN"),
+            ("xoxp-", "SLACK_TOKEN"),
+            ("xoxa-", "SLACK_TOKEN"),
+            ("xoxr-", "SLACK_TOKEN"),
+            ("xoxs-", "SLACK_TOKEN"),
+        ];
+        let mut result = String::with_capacity(s.len());
+        let bytes = s.as_bytes();
+        let mut i = 0;
+        while i < bytes.len() {
+            let mut matched: Option<(&str, usize)> = None;
+            for (prefix, label) in PREFIXES {
+                if s[i..].starts_with(prefix) {
+                    // consume the prefix plus trailing token chars
+                    let mut j = i + prefix.len();
+                    while j < bytes.len()
+                        && (bytes[j].is_ascii_alphanumeric()
+                            || bytes[j] == b'-'
+                            || bytes[j] == b'_')
+                    {
+                        j += 1;
+                    }
+                    // require a minimum secret length past the prefix
+                    if j - (i + prefix.len()) >= 8 {
+                        matched = Some((label, j));
+                        break;
+                    }
+                }
+            }
+            if let Some((label, end)) = matched {
+                result.push_str("[REDACTED:");
+                result.push_str(label);
+                result.push(']');
+                i = end;
+            } else {
+                // advance one char (byte-safe: ASCII fast path, else whole char)
+                let c = s[i..].chars().next().unwrap();
+                result.push(c);
+                i += c.len_utf8();
+            }
+        }
+        result
+    }
+
+    fn redact_pem_blocks(s: &str) -> String {
+        let mut out = String::new();
+        let mut rest = s;
+        while let Some(start) = rest.find("-----BEGIN ") {
+            if let Some(end) = rest[start..].find("-----END ") {
+                // find end of the END line
+                let tail = &rest[start..];
+                if let Some(nl) = tail[end..].find('\n') {
+                    let kind = tail["-----BEGIN ".len()..]
+                        .split("-----")
+                        .next()
+                        .unwrap_or("KEY");
+                    out.push_str(&rest[..start]);
+                    out.push_str("[REDACTED:");
+                    out.push_str(kind.trim());
+                    out.push(']');
+                    rest = &tail[end + nl + 1..];
+                    continue;
+                }
+            }
+            break;
+        }
+        out.push_str(rest);
+        out
+    }
+
+    fn is_secret_name(word: &str) -> bool {
+        let w = word.to_lowercase();
+        [
+            "secret", "token", "password", "passwd", "pwd", "api_key", "apikey",
+        ]
+        .iter()
+        .any(|k| w.contains(k))
+    }
+
+    fn redact_assignments(s: &str) -> String {
+        let mut lines: Vec<String> = Vec::new();
+        for line in s.split_inclusive('\n') {
+            let has_nl = line.ends_with('\n');
+            let body = line.trim_end_matches('\n');
+            // look for NAME=VALUE or NAME: VALUE with a secret-ish NAME
+            let mut replaced = body.to_string();
+            for sep in ['=', ':'] {
+                if let Some(pos) = body.find(sep) {
+                    let (name, mut value) = body.split_at(pos);
+                    value = &value[1..];
+                    let name_word = name
+                        .rsplit(|c: char| !c.is_alphanumeric() && c != '_')
+                        .next()
+                        .unwrap_or("");
+                    let value = value.trim().trim_matches(|c| c == '"' || c == '\'');
+                    if !name_word.is_empty()
+                        && is_secret_name(name_word)
+                        && value.len() >= 8
+                        && !value.starts_with("[REDACTED")
+                    {
+                        replaced = format!(
+                            "{}{}[REDACTED]",
+                            &body[..pos + 1],
+                            if body.as_bytes().get(pos + 1) == Some(&b' ') {
+                                " "
+                            } else {
+                                ""
+                            }
+                        );
+                        break;
+                    }
+                }
+            }
+            if has_nl {
+                replaced.push('\n');
+            }
+            lines.push(replaced);
+        }
+        lines.concat()
+    }
+
     #[derive(Debug, Clone, Serialize, Deserialize, Default)]
     pub struct Task {
         pub title: String,
@@ -272,5 +423,47 @@ mod tests {
         assert!(!maybe_conflicts("Use TypeScript", "use typescript"));
         // nothing substantive -> quiet
         assert!(!maybe_conflicts("Use it", "Do it"));
+    }
+    #[test]
+    fn redact_known_prefixes() {
+        assert_eq!(
+            redact_text("key sk-abc1234567890xyz done"),
+            "key [REDACTED:OPENAI_KEY] done"
+        );
+        assert_eq!(
+            redact_text("token ghp_abcdefghij1234567890"),
+            "token [REDACTED:GITHUB_TOKEN]"
+        );
+        assert_eq!(
+            redact_text("id AKIAIOSFODNN7EXAMPLE"),
+            "id [REDACTED:AWS_KEY]"
+        );
+        // too short after prefix -> left alone
+        assert_eq!(redact_text("see sk-abc end"), "see sk-abc end");
+    }
+    #[test]
+    fn redact_assignments_and_pem() {
+        assert_eq!(
+            redact_text("OPENAI_API_KEY=sk-fake-SECRET-abc123"),
+            "OPENAI_API_KEY=[REDACTED:OPENAI_KEY]"
+        );
+        assert_eq!(
+            redact_text("password: hunter2-hunter2"),
+            "password: [REDACTED]"
+        );
+        // normal prose untouched
+        assert_eq!(
+            redact_text("token limit hit mid-milestone"),
+            "token limit hit mid-milestone"
+        );
+        assert_eq!(
+            redact_text("Next action: fix the expiry check"),
+            "Next action: fix the expiry check"
+        );
+        let pem = "key:\n-----BEGIN RSA PRIVATE KEY-----\nMIIBOgIBAA\n-----END RSA PRIVATE KEY-----\ndone";
+        let out = redact_text(pem);
+        assert!(out.contains("[REDACTED:RSA PRIVATE KEY]"));
+        assert!(!out.contains("MIIBOgIBAA"));
+        assert!(out.contains("done"));
     }
 }

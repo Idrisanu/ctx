@@ -308,8 +308,15 @@ New agents slot in as readers + flavors; the core never hard-codes a vendor.
 - Local-first, offline-capable. No account, no telemetry, no cloud.
 - Ingestion stores summaries/excerpts only — raw transcripts are never
   persisted into `.ctx/`.
-- Secrets are never copied: `.ctxignore` (`.env`, `*.pem`, `secrets/…`)
-  is honored by `ctx commit`; `ctx doctor` reports env var names, never values.
+- Secrets are redacted before anything reaches `.ctx/`: OpenAI/GitHub/
+  AWS/Slack keys, PEM blocks, and `SECRET=VALUE` assignments become
+  `[REDACTED:…]` in ingested sessions, notes, and manual entries.
+- `.ctxignore` (`.env`, `*.pem`, `secrets/…`) is honored by `ctx commit`
+  (including unstaging pre-staged matches) and by ingest file lists.
+- `ctx doctor` reports env var names, never values.
+- Stated limits: redaction covers high-confidence patterns only. Bare
+  hex strings, unlabeled JWTs, and secrets in prose without a key name
+  are NOT caught. When in doubt, keep `.ctx/` private.
 
 ## Build & develop
 

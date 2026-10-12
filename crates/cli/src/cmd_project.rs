@@ -171,25 +171,72 @@ pub(crate) fn prompt_yes(question: &str) -> bool {
 }
 
 pub(crate) fn install_git_hook(root: &std::path::Path) {
-    let hooks = root.join(".git").join("hooks");
+    // Respect a custom hooks path; otherwise .git/hooks.
+    let hooks = custom_hooks_dir(root).unwrap_or_else(|| root.join(".git").join("hooks"));
     if !hooks.is_dir() {
         return;
     }
     let exe = std::env::current_exe().unwrap_or_else(|_| PathBuf::from("ctx"));
-    let hook = format!(
-        "#!/bin/sh\n\"{}\" checkpoint-auto >/dev/null 2>&1 || true\n",
+    let line = format!(
+        "\"{}\" checkpoint-auto >/dev/null 2>&1 || true",
         exe.display()
     );
     let path = hooks.join("post-commit");
-    if std::fs::write(&path, hook).is_ok() {
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::PermissionsExt;
-            let _ = std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755));
+    match std::fs::read_to_string(&path) {
+        // Our hook already present — nothing to do.
+        Ok(existing) if existing.contains("checkpoint-auto") => {
+            println!("git post-commit hook already installed.");
         }
-        println!("git post-commit hook installed (auto-checkpoint).");
+        // Foreign hook exists — chain instead of clobbering.
+        Ok(existing) => {
+            let mut updated = existing;
+            if !updated.ends_with('\n') {
+                updated.push('\n');
+            }
+            updated.push_str(&format!(
+                "\n# Added by ctx init (auto-checkpoint)\n{}\n",
+                line
+            ));
+            if ctx_storage::atomic_write(&path, updated.as_bytes()).is_ok() {
+                make_executable(&path);
+                println!("git post-commit hook chained onto your existing hook.");
+            }
+        }
+        // No hook — install fresh.
+        Err(_) => {
+            let hook = format!("#!/bin/sh\n{}\n", line);
+            if ctx_storage::atomic_write(&path, hook.as_bytes()).is_ok() {
+                make_executable(&path);
+                println!("git post-commit hook installed (auto-checkpoint).");
+            }
+        }
     }
 }
+
+fn custom_hooks_dir(root: &std::path::Path) -> Option<PathBuf> {
+    let out = std::process::Command::new("git")
+        .args(["config", "core.hooksPath"])
+        .current_dir(root)
+        .output()
+        .ok()?;
+    if !out.status.success() {
+        return None;
+    }
+    let p = std::path::PathBuf::from(String::from_utf8_lossy(&out.stdout).trim().to_string());
+    if p.as_os_str().is_empty() {
+        return None;
+    }
+    Some(if p.is_absolute() { p } else { root.join(p) })
+}
+
+#[cfg(unix)]
+fn make_executable(path: &std::path::Path) {
+    use std::os::unix::fs::PermissionsExt;
+    let _ = std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o755));
+}
+
+#[cfg(not(unix))]
+fn make_executable(_path: &std::path::Path) {}
 
 pub(crate) fn chrono_now() -> String {
     chrono::Utc::now().to_rfc3339()
@@ -376,7 +423,10 @@ pub(crate) fn cmd_inspect(what: &str) -> Result<()> {
             println!("{}", serde_json::to_string_pretty(&state.environment)?);
         }
         "agents" => {
-            println!("Detected agents: (adapters not yet implemented)");
+            let root = project_root();
+            for (name, found) in ctx_ingest::detected(&root) {
+                println!("{} {}", if found { "✓" } else { "✗" }, name);
+            }
         }
         other => anyhow::bail!(
             "unknown inspect target: {} (decisions|tasks|environment|agents)",
@@ -561,6 +611,32 @@ pub(crate) fn cmd_commit(message: Option<String>, yes: bool) -> Result<()> {
             "git add failed: {}",
             String::from_utf8_lossy(&add.stderr).trim()
         );
+    }
+    // Unstage anything matching .ctxignore that got into the index earlier
+    // (e.g. via a previous `git add -A`). Only our patterns are touched —
+    // unrelated staged changes are left alone.
+    if !patterns.is_empty() {
+        let cached = std::process::Command::new("git")
+            .args(["diff", "--cached", "--name-only"])
+            .current_dir(&root)
+            .output()?;
+        let tainted: Vec<String> = String::from_utf8_lossy(&cached.stdout)
+            .lines()
+            .map(|l| l.trim().to_string())
+            .filter(|f| !f.is_empty() && ctx_git::ctxignored(&patterns, f))
+            .collect();
+        if !tainted.is_empty() {
+            let _ = std::process::Command::new("git")
+                .arg("reset")
+                .arg("-q")
+                .arg("--")
+                .args(&tainted)
+                .current_dir(&root)
+                .status();
+            for f in &tainted {
+                println!("Unstaged by .ctxignore: {}", f);
+            }
+        }
     }
     // Count what actually got staged (untracked dirs expand here).
     let staged = std::process::Command::new("git")

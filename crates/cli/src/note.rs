@@ -128,6 +128,8 @@ pub(crate) fn apply_note(state: &mut ProjectContext, root: &std::path::Path) {
             if v.is_empty() {
                 continue;
             }
+            // Same redaction as clean_note_value for continuation lines.
+            let v = ctx_core::redact_text(&v);
             match section {
                 "completed" => completed.push(v),
                 "current" => current.push(v),
@@ -183,6 +185,7 @@ pub(crate) fn clean_note_value(s: &str) -> Option<String> {
     if t.is_empty() || t.eq_ignore_ascii_case("none") || t == "-" || t == "N/A" {
         None
     } else {
-        Some(t.to_string())
+        // Notes are agent-written and land in committed state: redact first.
+        Some(ctx_core::redact_text(t))
     }
 }

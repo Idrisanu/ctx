@@ -484,7 +484,14 @@ pub(crate) fn merge_session(ctx: &CtxDir, session: &ctx_ingest::SessionInfo) -> 
             state.errors.push(e.clone());
         }
     }
+    // .ctxignore applies to ingest too: secrets-adjacent paths stay out
+    // of committed state even when a transcript names them.
+    let proj_root = ctx.root.parent().unwrap_or(std::path::Path::new("."));
+    let ignore_pats = ctx_git::ctxignore_patterns(proj_root);
     for f in &compressed.files_touched {
+        if ctx_git::ctxignored(&ignore_pats, f) {
+            continue;
+        }
         if !state.files_changed.contains(f) {
             state.files_changed.push(f.clone());
         }

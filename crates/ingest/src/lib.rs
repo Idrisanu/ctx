@@ -76,16 +76,20 @@ pub fn detected(project_dir: &Path) -> Vec<(String, bool)> {
 
 /// Compress a session into a short, honest summary block.
 pub fn compress(s: &SessionInfo) -> CompressedSession {
+    // Redact before anything is persisted: .ctx/ is designed to be
+    // committed, so secrets must never reach it verbatim. See
+    // ctx_core::redact_text for the (deliberately narrow) coverage.
+    let r = ctx_core::redact_text;
     CompressedSession {
         agent: s.agent.clone(),
-        goal: s.first_user_message.clone(),
-        last_user_message: s.last_user_message.clone(),
-        last_assistant_excerpt: s.last_assistant_excerpt.clone(),
-        progress: s.progress.clone(),
+        goal: s.first_user_message.clone().map(|t| r(&t)),
+        last_user_message: s.last_user_message.clone().map(|t| r(&t)),
+        last_assistant_excerpt: s.last_assistant_excerpt.clone().map(|t| r(&t)),
+        progress: s.progress.clone().map(|t| r(&t)),
         tokens_total: s.tokens_total,
-        errors: s.errors.iter().take(5).cloned().collect(),
+        errors: s.errors.iter().take(5).map(|e| r(e)).collect(),
         files_touched: s.files_touched.iter().take(20).cloned().collect(),
-        commands: s.commands.iter().take(10).cloned().collect(),
+        commands: s.commands.iter().take(10).map(|c| r(c)).collect(),
         source: format!("{} session {}", s.agent, s.session_id),
     }
 }
